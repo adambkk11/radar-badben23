@@ -1,0 +1,86 @@
+name: Radar de licitaciones
+
+on:
+  schedule:
+    - cron: "17 5-21/3 * * *"   # cada 3 horas de 07:17 a 23:17 (hora de España en verano)
+  workflow_dispatch:
+    inputs:
+      orden:
+        description: "Qué hacer"
+        type: choice
+        default: todo
+        options: [todo, actualizar, analizar, web, avisar, historico]
+      meses:
+        description: "Solo para 'historico': meses hacia atrás"
+        default: "6"
+
+permissions:
+  contents: write
+  pages: write
+  id-token: write
+
+concurrency:
+  group: radar
+  cancel-in-progress: false
+
+jobs:
+  radar:
+    runs-on: ubuntu-latest
+    timeout-minutes: 300
+    environment:
+      name: github-pages
+      url: ${{ steps.deploy.outputs.page_url }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - run: pip install -r requirements.txt
+
+      - name: Comprobar contraseña
+        env:
+          SITE_PASSWORD: ${{ secrets.SITE_PASSWORD }}
+        run: |
+          if [ -z "$SITE_PASSWORD" ]; then
+            echo "::error::Falta el secreto SITE_PASSWORD (sin él los datos serían públicos)."; exit 1
+          fi
+
+      - name: Ejecutar radar
+        env:
+          SITE_PASSWORD: ${{ secrets.SITE_PASSWORD }}
+          CONFIG_PRIVADA: ${{ secrets.CONFIG_PRIVADA }}
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
+          TELEGRAM_TOKEN: ${{ secrets.TELEGRAM_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+          SMTP_USER: ${{ secrets.SMTP_USER }}
+          SMTP_PASSWORD: ${{ secrets.SMTP_PASSWORD }}
+          ALERT_EMAIL: ${{ secrets.ALERT_EMAIL }}
+          RADAR_URL: https://${{ github.repository_owner }}.github.io/${{ github.event.repository.name }}/
+        run: |
+          ORDEN="${{ github.event.inputs.orden || 'todo' }}"
+          if [ "$ORDEN" = "historico" ]; then
+            python run.py historico "${{ github.event.inputs.meses || '6' }}"
+          else
+            python run.py "$ORDEN"
+          fi
+          # asegura que la web siempre tiene datos
+          [ -f site/data.enc ] || python run.py web
+
+      - name: Guardar base de datos (cifrada)
+        run: |
+          git config user.name "radar-bot"
+          git config user.email "radar-bot@users.noreply.github.com"
+          git add data/radar.db.enc
+          git diff --cached --quiet || git commit -m "datos $(date -u +%F\ %H:%M)"
+          git push || (git pull --rebase -X ours && git push)
+
+      - uses: actions/configure-pages@v5
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: site
+      - id: deploy
+        uses: actions/deploy-pages@v4

@@ -1,0 +1,10 @@
+__pycache__/
+*.pyc
+.venv/
+.env
+site/data.json.gz
+tests/*.pdf
+config.privada.json
+data/radar.db
+data/*.db-journal
+site/data.enc

@@ -1,0 +1,80 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Radar BadBen23</title>
+<meta name="description" content="Radar privado de licitaciones de suministro de Grupo BadBen23">
+<meta name="robots" content="noindex, nofollow">
+<meta name="theme-color" content="#1f2a37">
+<link rel="icon" href="icon.svg" type="image/svg+xml">
+<link rel="manifest" href="manifest.json">
+<link rel="apple-touch-icon" href="icon-192.png">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<div id="lock" class="lock">
+  <form id="lockForm" class="lock-card" autocomplete="off">
+    <div class="brand-mark big">R</div>
+    <h1>Radar BadBen23</h1>
+    <p class="muted">Licitaciones de suministro analizadas para tu modelo de negocio.</p>
+    <input id="pwd" type="password" placeholder="Contraseña" autocomplete="current-password" required>
+    <label class="check"><input type="checkbox" id="remember"> Recordar en este dispositivo</label>
+    <button type="submit" class="btn primary">Entrar</button>
+    <p id="lockMsg" class="error" role="alert"></p>
+  </form>
+</div>
+
+<div id="app" class="app" hidden>
+  <header class="top">
+    <div class="brand"><div class="brand-mark">R</div><div><strong>Radar</strong> <span class="muted">BadBen23</span></div></div>
+    <div class="search">
+      <input id="q" type="search" placeholder="Buscar: producto, organismo, expediente, CPV…" aria-label="Buscar">
+    </div>
+    <div class="top-meta muted" id="updated"></div>
+    <button class="icon-btn" id="themeBtn" title="Cambiar tema" aria-label="Cambiar tema">◐</button>
+  </header>
+
+  <nav class="tabs" id="tabs">
+    <button data-tab="inicio" class="active">Inicio</button>
+    <button data-tab="buscar">Licitaciones</button>
+    <button data-tab="tablero">Mi tablero</button>
+    <button data-tab="calendario">Calendario</button>
+    <button data-tab="competencia">Competencia</button>
+  </nav>
+
+  <main>
+    <section id="tab-inicio" class="tab active"></section>
+    <section id="tab-buscar" class="tab">
+      <div class="layout">
+        <aside class="filters" id="filters"></aside>
+        <div class="results">
+          <div class="results-bar">
+            <button class="btn ghost only-mobile" id="filtersBtn">Filtros</button>
+            <span id="count" class="muted"></span>
+            <select id="sort" aria-label="Ordenar">
+              <option value="nota">Mejor encaje</option>
+              <option value="cierre">Cierra antes</option>
+              <option value="importe">Mayor importe</option>
+              <option value="nuevas">Más nuevas</option>
+            </select>
+          </div>
+          <div id="list" class="list"></div>
+          <button id="more" class="btn ghost wide" hidden>Ver más</button>
+        </div>
+      </div>
+    </section>
+    <section id="tab-tablero" class="tab"></section>
+    <section id="tab-calendario" class="tab"></section>
+    <section id="tab-competencia" class="tab"></section>
+  </main>
+</div>
+
+<div id="drawer" class="drawer" hidden>
+  <div class="drawer-bg" data-close></div>
+  <article class="drawer-panel" id="detail" role="dialog" aria-modal="true"></article>
+</div>
+<div id="toast" class="toast" hidden></div>
+<script src="app.js"></script>
+</body>
+</html>

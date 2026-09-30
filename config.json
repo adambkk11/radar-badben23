@@ -1,0 +1,139 @@
+{
+  "_comentario": "Configuración del Radar de licitaciones de Grupo BadBen23. Edita este archivo para cambiar qué se considera 'encaja'.",
+
+  "empresa": {
+    "nombre": "Grupo BadBen23 S.L.",
+    "nif": "B21980412",
+    "constitucion": "2025-05",
+    "provincia_base": "Barcelona",
+    "modelo": "Importación de producto (China y fabricantes) para suministro a administraciones. Empresa de menos de 5 años: en contratos NO armonizados de suministro puede acreditar la solvencia técnica sin relación de suministros previos (art. 89.1 LCSP). Los socios/proveedores concretos van en config.privada.json (no se publica)."
+  },
+
+  "feeds": {
+    "estado": "https://contrataciondelestado.es/sindicacion/sindicacion_643/licitacionesPerfilesContratanteCompleto3.atom",
+    "agregadas": "https://contrataciondelestado.es/sindicacion/sindicacion_1044/PlataformasAgregadasSinMenores.atom",
+    "max_paginas_por_feed": 60,
+    "dias_atras_primera_vez": 21
+  },
+
+  "solo_suministros": true,
+
+  "familias": {
+    "vestuario": {
+      "nombre": "Vestuario y uniformes",
+      "cpv": ["181", "182", "183", "184", "188", "35811", "35812", "35813", "35814", "35815", "18000000"],
+      "palabras": ["vestuario", "vestuari", "uniform", "ropa de trabajo", "roba de treball", "prendas", "camiseta", "samarreta", "polo", "pantal", "chaqueta", "parka", "calzado", "calçat", "botas", "gorra"],
+      "peso": 30,
+      "socio": "Fabricante textil nacional"
+    },
+    "epi": {
+      "nombre": "EPI (cat. I-II)",
+      "cpv": ["18143", "35113", "18141", "18830", "18444"],
+      "palabras": ["epi", "equipos de protección individual", "equips de protecció individual", "guantes", "alta visibilidad", "chaleco reflectante", "calzado de seguridad"],
+      "peso": 22,
+      "socio": "Importación / distribuidor EPI"
+    },
+    "mobiliario": {
+      "nombre": "Mobiliario",
+      "cpv": ["391", "3913", "3915", "3911", "3912"],
+      "palabras": ["mobiliario", "mobiliari", "sillas", "cadires", "mesas", "estanter", "taquill", "armario"],
+      "peso": 24,
+      "socio": "Proveedor mobiliario con montaje"
+    },
+    "oficina_archivo": {
+      "nombre": "Oficina y archivo",
+      "cpv": ["3019", "30197", "30199", "22852", "22800", "22817"],
+      "palabras": ["material de oficina", "material d'oficina", "papelería", "carpetas", "carpetes", "cajas de archivo", "archivo", "agendas"],
+      "peso": 22,
+      "socio": "Mayorista oficina"
+    },
+    "merchandising": {
+      "nombre": "Merchandising y promocional",
+      "cpv": ["39294", "18530", "22462", "39561", "18513", "30192"],
+      "palabras": ["merchandising", "marxandatge", "promocional", "obsequios", "regalos institucionales", "insignias", "emblemas", "distintivos", "bolsas de tela", "tazas", "trofeos", "medallas"],
+      "peso": 26,
+      "socio": "Importación China"
+    },
+    "urbano_senal": {
+      "nombre": "Mobiliario urbano ligero y señalización",
+      "cpv": ["34928", "34992", "44423", "44613"],
+      "palabras": ["papeleras", "vallas", "tanques", "pilonas", "pilones", "bancos", "señalización", "senyalització", "conos", "balizas", "contenedores"],
+      "peso": 18,
+      "socio": "Importación / fabricante nacional"
+    },
+    "deporte_ocio": {
+      "nombre": "Deporte, juguetes y camping",
+      "cpv": ["374", "375", "39522", "37535"],
+      "palabras": ["material deportivo", "equipamiento deportivo", "juguetes", "carpas", "camastro", "camas de campaña", "tiendas de campaña", "mochilas"],
+      "peso": 20,
+      "socio": "Importación China"
+    },
+    "textil_hogar": {
+      "nombre": "Textil hogar y lencería",
+      "cpv": ["392", "3951", "3952", "19"],
+      "palabras": ["toallas", "albornoces", "mantas", "sábanas", "lencería", "ropa de cama", "tejido", "colchas"],
+      "peso": 20,
+      "socio": "Importación / fabricante textil"
+    },
+    "electronica_ligera": {
+      "nombre": "Electrónica ligera CE",
+      "cpv": ["3234", "31527", "31521", "30237", "38652"],
+      "palabras": ["auriculares", "linternas", "gafas", "tabletas digitalizadoras", "baterías portátiles", "power bank", "energía portátil"],
+      "peso": 16,
+      "socio": "Importación China"
+    },
+    "bolsas": {
+      "nombre": "Bolsas (línea aparte)",
+      "cpv": ["19640", "18937"],
+      "palabras": ["bolsas de basura", "bolsas compostables", "bolsa compostable", "bosses"],
+      "peso": 10,
+      "socio": "Fabricante bolsas compostables"
+    }
+  },
+
+  "penalizaciones": {
+    "palabras": {
+      "obra": -30, "obras": -30, "instalación": -12, "instal·lació": -12, "montaje": -10, "muntatge": -10,
+      "alquiler": -30, "arrendamiento": -30, "renting": -30, "lloguer": -30,
+      "mantenimiento": -20, "software": -35, "licencias": -35, "vehículo": -35, "furgoneta": -35, "camión": -35,
+      "combustible": -40, "gasóleo": -40, "gas natural": -40, "electricidad": -40, "energía eléctrica": -40,
+      "alimentos": -35, "alimentación": -30, "medicamentos": -40, "vacuna": -40, "reactivos": -35,
+      "quirúrg": -30, "sanitario": -10, "antibala": -40, "armamento": -40, "categoría iii": -25,
+      "ordenadores": -25, "informático": -20, "servicio de": -15
+    },
+    "_cpv_ajenos": "Si el CPV principal empieza por estos códigos (y no es de ninguna familia) se resta",
+    "cpv_ajenos": {
+      "03": -30, "09": -40, "14": -25, "15": -30, "33": -25, "34": -15, "41": -40, "42": -20, "43": -25,
+      "44": -20, "45": -35, "48": -35, "50": -30, "51": -30, "55": -30, "60": -30, "64": -30, "65": -40,
+      "66": -40, "71": -30, "72": -30, "73": -30, "77": -25, "79": -20, "80": -25, "85": -30, "90": -25, "92": -20, "98": -20
+    }
+  },
+
+  "reglas": {
+    "umbral_armonizado_suministros": 216000,
+    "valor_ideal_max": 140000,
+    "valor_min": 3000,
+    "dias_minimos_para_preparar": 3,
+    "peso_precio_bueno": 80,
+    "peso_precio_malo": 50
+  },
+
+  "prioridad": { "A": 65, "B": 45 },
+
+  "ia": {
+    "proveedor": "gemini",
+    "modelo_gemini": ["gemini-2.5-flash", "gemini-flash-latest", "gemini-2.5-flash-lite"],
+    "modelo_groq": ["llama-3.3-70b-versatile", "openai/gpt-oss-120b", "llama-3.1-8b-instant"],
+    "max_caracteres_groq": 22000,
+    "max_analisis_por_ejecucion": 25,
+    "nota_minima_para_analizar": 45,
+    "pausa_segundos": 7,
+    "max_caracteres_pliego": 120000
+  },
+
+  "alertas": {
+    "telegram": true,
+    "email": false,
+    "solo_prioridad": ["A"]
+  }
+}
