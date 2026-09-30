@@ -10,9 +10,8 @@ jobs:
       - name: Histórico mensual (ZIP)
         run: |
           M=$(date -u -d "$(date +%Y-%m-01) -1 month" +%Y%m)
-          for H in contrataciondelsectorpublico.gob.es contrataciondelestado.es www.contrataciondelsectorpublico.gob.es; do
-            for P in sindicacion/sindicacion_643/licitacionesPerfilesContratanteCompleto3_$M.zip sindicacion/sindicacion_1044/PlataformasAgregadasSinMenores_$M.zip; do
-              echo "== https://$H/$P"
-              curl -sS -r 0-99 -o /dev/null -w "HTTP %{http_code} · %{content_type} · %{size_download} bytes\n" -A "Mozilla/5.0 RadarBadBen23/1.0" "https://$H/$P" || true
-            done
+          for P in sindicacion/sindicacion_643/licitacionesPerfilesContratanteCompleto3_$M.zip sindicacion/sindicacion_1044/PlataformasAgregadasSinMenores_$M.zip; do
+            echo "== $P"
+            curl -sS --max-time 240 -o z.zip -w "HTTP %{http_code} · %{content_type} · %{size_download} bytes · %{time_total}s\n" -A "RadarBadBen23/1.0" "https://contrataciondelestado.es/$P" || true
+            unzip -l z.zip | tail -3 || true
           done

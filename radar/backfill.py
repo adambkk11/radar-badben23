@@ -12,8 +12,8 @@ from .fetch import UA, procesar_items
 from .parser import parse_feed
 
 URLS = [
-    ("estado", "https://contrataciondelsectorpublico.gob.es/sindicacion/sindicacion_643/licitacionesPerfilesContratanteCompleto3_{ym}.zip"),
-    ("agregadas", "https://contrataciondelsectorpublico.gob.es/sindicacion/sindicacion_1044/PlataformasAgregadasSinMenores_{ym}.zip"),
+    ("estado", "https://contrataciondelestado.es/sindicacion/sindicacion_643/licitacionesPerfilesContratanteCompleto3_{ym}.zip"),
+    ("agregadas", "https://contrataciondelestado.es/sindicacion/sindicacion_1044/PlataformasAgregadasSinMenores_{ym}.zip"),
 ]
 
 
@@ -37,7 +37,7 @@ def cargar_mes(con, cfg: dict, ym: str) -> dict:
         print(f"[histórico] {nombre} {ym}: {url}")
         with tempfile.NamedTemporaryFile(suffix=".zip", delete=False) as tmp:
             try:
-                with requests.get(url, headers={"User-Agent": UA}, stream=True, timeout=600) as r:
+                with requests.get(url, headers={"User-Agent": UA}, stream=True, timeout=(30, 300)) as r:
                     if r.status_code != 200:
                         print(f"  no disponible (HTTP {r.status_code})")
                         continue
