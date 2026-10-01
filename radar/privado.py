@@ -73,8 +73,11 @@ def cerrar_db(db: Path, clave: str | None) -> None:
     if not clave or not db.exists():
         return
     enc = db.with_suffix(".db.enc")
-    enc.write_text(json.dumps(cifrar(gzip.compress(db.read_bytes(), 6), clave)))
-    print(f"[db] cifrada -> {enc.name} ({enc.stat().st_size // 1024} KB)")
+    tmp = enc.with_suffix(".enc.tmp")
+    # se escribe aparte y se renombra al final: si GitHub corta la ejecución a medias, la copia buena no se pierde
+    tmp.write_text(json.dumps(cifrar(gzip.compress(db.read_bytes(), 5), clave)))
+    os.replace(tmp, enc)
+    print(f"[db] cifrada -> {enc.name} ({enc.stat().st_size // 1024} KB)", flush=True)
 
 
 def _fusionar(base: dict, extra: dict) -> dict:
