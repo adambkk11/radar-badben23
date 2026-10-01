@@ -139,6 +139,9 @@
       n: v.length, contratos, adjudicado: v.reduce((a, r) => a + (r.im || 0), 0), presupuesto: v.reduce((a, r) => a + (r.pz || 0), 0),
       bajaMedia: media(bajas), bajaMediana: pctil(bajas, 0.5), baja25: pctil(bajas, 0.25), baja75: pctil(bajas, 0.75),
       ofertas: media(ofs), unaOferta: ofs.length ? ofs.filter((x) => x === 1).length / ofs.length : null, bajas,
+      // con competencia real (2 o más ofertas): lo que de verdad hay que bajar para ganar
+      bajaCompetida: pctil(v.filter((r) => bajaOk(r) && r.of >= 2).map((r) => r.b), 0.5),
+      nCompetida: v.filter((r) => bajaOk(r) && r.of >= 2).length,
     };
   }
   function agrupar(v, clave, nombre) {
@@ -243,7 +246,7 @@
     const gan = agrupar(v, (r) => r.nif || r.g, (r) => r.g).slice(0, 12);
     const orgs = agrupar(v, (r) => r.o, (r) => r.o).slice(0, 8);
     const cpvs = agrupar(v, (r) => (r.cpv[0] || '').slice(0, 4), (r) => (r.cpv[0] || '').slice(0, 4)).slice(0, 8);
-    const objetivo = st.bajaMediana !== null ? `<div class="box consejo"><strong>Precio para ganar:</strong> en estas ${st.n} adjudicaciones la baja ganadora típica es <strong>${R.pct(st.bajaMediana)}</strong> (la mitad de los ganadores bajó entre ${R.pct(st.baja25)} y ${R.pct(st.baja75)}). ${st.unaOferta !== null ? `En el <strong>${R.pct(100 * st.unaOferta)}</strong> se presentó una sola empresa.` : ''} <span class="muted">Útil sobre todo cuando el precio pesa mucho.</span></div>` : '';
+    const objetivo = st.bajaMediana !== null ? `<div class="box consejo"><strong>Precio para ganar:</strong> en estas ${st.n} adjudicaciones la baja ganadora típica es <strong>${R.pct(st.bajaMediana)}</strong> (la mitad de los ganadores bajó entre ${R.pct(st.baja25)} y ${R.pct(st.baja75)}). ${st.unaOferta !== null ? `En el <strong>${R.pct(100 * st.unaOferta)}</strong> se presentó una sola empresa.` : ''} ${st.bajaCompetida !== null && st.nCompetida >= 5 ? `Cuando compiten 2 o más empresas, la baja ganadora típica sube a <strong>${R.pct(st.bajaCompetida)}</strong> (${st.nCompetida} casos).` : ''} <span class="muted">Útil sobre todo cuando el precio pesa mucho.</span></div>` : '';
     out.innerHTML = `
       <div class="kpis">
         <div class="kpi"><div class="v">${st.n.toLocaleString('es-ES')}</div><div class="l">Adjudicaciones (lotes) · ${st.contratos.toLocaleString('es-ES')} contratos</div></div>
@@ -413,7 +416,7 @@
     el.innerHTML = `<h3>Simulador de baja</h3>
       <p class="muted">Con ${v.length} adjudicaciones de suministros con CPV ${pref}* (${R.esc(cpvNombre(pref))}). Probabilidad de que tu baja hubiera igualado o superado la del ganador. Si el precio no es el único criterio, tómalo como orientación.</p>
       <table><tr><th class="num">Tu baja</th><th class="num">Tu oferta</th><th></th><th class="num">Habrías ganado</th></tr>${filas}</table>
-      <p>Baja ganadora mediana: <strong>${R.pct(pctil(bajas, 0.5))}</strong> · ofertas por lote: <strong>${ofs.length ? media(ofs).toFixed(1) : '—'}</strong>${delOrg.length ? ` · en este organismo: ${delOrg.length} adjudicaciones parecidas, baja media <strong>${R.pct(media(delOrg.map((r) => r.b)))}</strong>` : ''}</p>
+      <p>Baja ganadora mediana: <strong>${R.pct(pctil(bajas, 0.5))}</strong> · ofertas por lote: <strong>${ofs.length ? media(ofs).toFixed(1) : '—'}</strong>${delOrg.length ? ` · en este organismo: ${delOrg.length} adjudicaciones parecidas, baja media <strong>${R.pct(media(delOrg.filter(bajaOk).map((r) => r.b)))}</strong>` : ''}${(() => { const c = v.filter((r) => bajaOk(r) && r.of >= 2).map((r) => r.b); return c.length >= 5 ? ` · con 2 o más ofertas: baja mediana <strong>${R.pct(pctil(c, 0.5))}</strong>` : ''; })()}</p>
       <div class="actions"><button class="btn small" data-hgo='${R.esc(JSON.stringify({ cpv: pref, q: '', org: '', gan: '', tipo: '1' }))}'>Ver estas adjudicaciones</button>
         <button class="btn small" data-org="${R.esc(x.o)}">Ficha del organismo</button></div>`;
   }

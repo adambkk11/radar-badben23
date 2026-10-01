@@ -86,7 +86,7 @@
 
   function iniciar(datos) {
     D = datos; L = datos.licitaciones; BY = Object.fromEntries(L.map((x) => [x.id, x]));
-    L.forEach((x) => { x._d = dias(x.ff); x._txt = norm([x.t, x.o, x.x, x.pr, x.ca, x.mu, (x.cpv || []).join(' '), (x.l || []).map((l) => l.n).join(' '), x.ai?.resumen].join(' ')); });
+    L.forEach((x) => { x._d = dias(x.ff); if (x._d === 0 && /^\d{1,2}:\d{2}/.test(x.hf || '')) { const [hh, mm] = x.hf.split(':').map(Number), ah = new Date(); if (ah.getHours() * 60 + ah.getMinutes() > hh * 60 + mm) x._d = -1; } x._txt = norm([x.t, x.o, x.x, x.pr, x.ca, x.mu, (x.cpv || []).join(' '), (x.l || []).map((l) => l.n).join(' '), x.ai?.resumen].join(' ')); });
     $('#lock').hidden = true; $('#app').hidden = false;
     $('#updated').textContent = 'Actualizado ' + new Date(datos.generado).toLocaleString('es-ES', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' });
     store.set('ultimaVisita', new Date().toISOString().slice(0, 10));
