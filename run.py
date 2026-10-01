@@ -103,7 +103,7 @@ def historico(con, c: dict, meses: int, max_meses: int | None = None, incluir_ac
             break
         grupo = pendientes[i:i + lote]
         for ym, res in cargar_meses(con, c, grupo, paralelo=lote).items():
-            n += 1
+            n += 1 if res else 0
             if ym != actual and "estado" in res:
                 hechos.add(ym)
         set_estado(con, "hist_cargados", json.dumps(sorted(hechos)))
@@ -177,7 +177,7 @@ def avisar(con, c: dict, web_url: str) -> None:
     texto, n = notify.resumen(con, c, desde=desde, web=web_url)
     if n:
         if c["alertas"].get("telegram"):
-            print("[aviso] telegram:", notify.telegram(texto))
+            print("[aviso] telegram:", "enviado" if notify.telegram(texto) else "no enviado (¿falta TELEGRAM_TOKEN / TELEGRAM_CHAT_ID?)")
         if c["alertas"].get("email"):
             print("[aviso] email:", notify.email(texto, f"Radar BadBen23: {n} licitaciones nuevas"))
     else:
