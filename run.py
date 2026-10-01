@@ -112,7 +112,7 @@ def historico(con, c: dict, meses: int, max_meses: int | None = None, incluir_ac
     return n
 
 
-def main(argv: list[str]) -> None:
+def main(argv: list[str]) -> int:
     orden = argv[1] if len(argv) > 1 else "todo"
     c = cfg()
     clave = os.environ.get("SITE_PASSWORD") or None
@@ -121,49 +121,79 @@ def main(argv: list[str]) -> None:
     con = conectar(DB)
     web_url = os.environ.get("RADAR_URL", "")
     h = c.get("historico", {})
-    if orden == "todo" and not con.execute("SELECT 1 FROM licitaciones LIMIT 1").fetchone():
-        # base de datos nueva (o perdida): el mes en curso trae las licitaciones abiertas
-        print("[radar] base de datos vacía: cargo el mes en curso")
-        historico(con, c, 0)
-    if orden in ("actualizar", "todo"):
-        actualizar(con, c)
-    if orden == "todo":
-        # el histórico se completa solo, poco a poco (un mes pasado por ejecución)
-        historico(con, c, h.get("meses_guardar", 24), max_meses=h.get("meses_por_ejecucion", 1), incluir_actual=False)
-    if orden in ("analizar", "todo"):
-        analizar(con, c, int(argv[2]) if len(argv) > 2 and orden == "analizar" else None)
-    if orden == "historico":
-        historico(con, c, int(argv[2]) if len(argv) > 2 else 12, limite_min=h.get("minutos_max_historico", 230))
-    if orden == "cargar":
-        print(cargar_fichero(con, argv[2], c, argv[3] if len(argv) > 3 else "fichero"))
-    if orden in ("web", "todo", "historico", "cargar"):
-        construir(con, c, SITE, clave)
-    if orden in ("avisar", "todo"):
-        desde = get_estado(con, "ultimo_aviso") or None
-        texto, n = notify.resumen(con, c, desde=desde, web=web_url)
-        set_estado(con, "ultimo_aviso", dt.datetime.now(dt.timezone.utc).isoformat(timespec="seconds"))
+    errores: list[str] = []
+
+    def fase(nombre: str, fn, *a, **k):
+        """Ejecuta una fase; si falla, lo apunta y sigue (no se pierde lo ya hecho)."""
+        t0 = time.time()
+        try:
+            r = fn(*a, **k)
+            print(f"[radar] {nombre}: ok ({time.time() - t0:.0f} s)", flush=True)
+            return r
+        except Exception as ex:  # noqa: BLE001
+            import traceback
+            traceback.print_exc()
+            con.rollback()
+            errores.append(f"{nombre}: {type(ex).__name__}: {ex}")
+            print(f"::warning::{nombre} falló: {ex}", flush=True)
+            return None
+
+    try:
+        if orden == "todo" and not con.execute("SELECT 1 FROM licitaciones LIMIT 1").fetchone():
+            # base de datos nueva (o perdida): el mes en curso trae las licitaciones abiertas
+            print("[radar] base de datos vacía: cargo el mes en curso")
+            fase("histórico (mes en curso)", historico, con, c, 0)
+        if orden in ("actualizar", "todo"):
+            fase("novedades de la Plataforma", actualizar, con, c)
+        if orden == "todo":
+            # el histórico se completa solo, poco a poco (un mes pasado por ejecución)
+            fase("histórico (un mes más)", historico, con, c, h.get("meses_guardar", 24),
+                 max_meses=h.get("meses_por_ejecucion", 1), incluir_actual=False)
+        if orden in ("analizar", "todo"):
+            fase("análisis IA", analizar, con, c, int(argv[2]) if len(argv) > 2 and orden == "analizar" else None)
+        if orden == "historico":
+            fase("histórico", historico, con, c, int(argv[2]) if len(argv) > 2 else 12,
+                 limite_min=h.get("minutos_max_historico", 230))
+        if orden == "cargar":
+            print(cargar_fichero(con, argv[2], c, argv[3] if len(argv) > 3 else "fichero"))
+        if orden in ("todo", "historico"):
+            fase("limpieza", limpiar, con, c)
+        if orden in ("web", "todo", "historico", "cargar", "actualizar", "analizar"):
+            fase("web", construir, con, c, SITE, clave)
+        if orden in ("avisar", "todo"):
+            fase("avisos", avisar, con, c, web_url)
+    finally:
+        con.close()
+        cerrar_db(DB, clave)
+    if errores:
+        print("[radar] terminado con errores:\n  - " + "\n  - ".join(errores))
+        return 1
+    print("[radar] terminado sin errores")
+    return 0
+
+
+def avisar(con, c: dict, web_url: str) -> None:
+    desde = get_estado(con, "ultimo_aviso") or None
+    texto, n = notify.resumen(con, c, desde=desde, web=web_url)
+    if n:
+        if c["alertas"].get("telegram"):
+            print("[aviso] telegram:", notify.telegram(texto))
+        if c["alertas"].get("email"):
+            print("[aviso] email:", notify.email(texto, f"Radar BadBen23: {n} licitaciones nuevas"))
+    else:
+        print("[aviso] nada nuevo que avisar")
+    set_estado(con, "ultimo_aviso", dt.datetime.now(dt.timezone.utc).isoformat(timespec="seconds"))
+    con.commit()
+    semana = dt.date.today().strftime("%G-%V")
+    if dt.date.today().weekday() == 0 and get_estado(con, "aviso_renovaciones") != semana:
+        texto, n = notify.renovaciones(con, c, web=web_url)
+        if n and c["alertas"].get("telegram"):
+            print("[aviso] renovaciones telegram:", notify.telegram(texto))
+        if n and c["alertas"].get("email"):
+            print("[aviso] renovaciones email:", notify.email(texto, f"Radar BadBen23: {n} contratos vencen pronto"))
+        set_estado(con, "aviso_renovaciones", semana)
         con.commit()
-        if n:
-            if c["alertas"].get("telegram"):
-                print("[aviso] telegram:", notify.telegram(texto))
-            if c["alertas"].get("email"):
-                print("[aviso] email:", notify.email(texto, f"Radar BadBen23: {n} licitaciones nuevas"))
-        else:
-            print("[aviso] nada nuevo que avisar")
-        semana = dt.date.today().strftime("%G-%V")
-        if dt.date.today().weekday() == 0 and get_estado(con, "aviso_renovaciones") != semana:
-            texto, n = notify.renovaciones(con, c, web=web_url)
-            set_estado(con, "aviso_renovaciones", semana)
-            con.commit()
-            if n and c["alertas"].get("telegram"):
-                print("[aviso] renovaciones telegram:", notify.telegram(texto))
-            if n and c["alertas"].get("email"):
-                print("[aviso] renovaciones email:", notify.email(texto, f"Radar BadBen23: {n} contratos vencen pronto"))
-    if orden in ("todo", "historico"):
-        limpiar(con, c)
-    con.close()
-    cerrar_db(DB, clave)
 
 
 if __name__ == "__main__":
-    main(sys.argv)
+    sys.exit(main(sys.argv))

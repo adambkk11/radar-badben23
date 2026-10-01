@@ -50,44 +50,55 @@
   function sumarDias(f, meses) { const d = new Date(f + 'T00:00:00'); d.setDate(d.getDate() + Math.round(meses * 30.44)); return d; }
   const hoy = () => { const d = new Date(); d.setHours(0, 0, 0, 0); return d; };
 
-  // ---------- carga de datos (por meses, bajo demanda) ----------
-  function aObjeto(campos, f) {
-    const o = {}; campos.forEach((c, i) => { o[c] = f[i]; });
-    const cpv = String(o.cpv || '').split(',').filter(Boolean);
+  // ---------- carga de datos (por meses y tipo, bajo demanda) ----------
+  // Los textos repetidos (organismos, empresas, títulos de lotes) se guardan una sola vez en memoria.
+  const INT = new Map(), NRM = new Map(), CPVS = new Map();
+  const intern = (s) => { if (s === null || s === undefined) return ''; s = String(s); const v = INT.get(s); if (v !== undefined) return v; INT.set(s, s); return s; };
+  const nrm = (s) => { s = s || ''; let v = NRM.get(s); if (v === undefined) { v = intern(R.norm(s)); NRM.set(s, v); } return v; };
+  const listaCpv = (s) => { let v = CPVS.get(s); if (!v) { v = s.split(',').filter(Boolean); CPVS.set(s, v); } return v; };
+  function aObjeto(ix, f) {
+    const g = (k) => (ix[k] === undefined ? null : f[ix[k]]);
+    const t = intern(g('titulo')), ln = intern(g('lote_nombre')), o = intern(g('organo')), gan = intern(g('ganador'));
+    const nif = intern(g('ganador_nif')), cp = intern(g('cpv')), pr = intern(g('provincia'));
     return {
-      f: o.fecha || '', t: o.titulo || '', l: o.lote || '', ln: o.lote_nombre || '', o: o.organo || '', ca: o.ccaa || '',
-      pr: o.provincia || '', tp: String(o.tipo || ''), cpv, pz: o.presupuesto, im: o.importe, b: o.baja, of: o.ofertas,
-      g: o.ganador || '', nif: o.ganador_nif || '', u: o.enlace || '', fam: o.familia || '', pc: o.procedimiento || '',
-      ai: o.ai || null, du: o.duracion || null,
-      _txt: R.norm([o.titulo, o.lote_nombre, o.organo, o.ganador, o.ganador_nif, cpv.join(' '), o.provincia].join(' ')),
-      _o: R.norm(o.organo), _g: R.norm((o.ganador || '') + ' ' + (o.ganador_nif || '')),
+      f: intern(g('fecha')), t, l: intern(g('lote')), ln, o, ca: intern(g('ccaa')), pr, tp: intern(g('tipo')),
+      cpv: listaCpv(cp), pz: g('presupuesto'), im: g('importe'), b: g('baja'), of: g('ofertas'), g: gan, nif,
+      u: intern(g('enlace')), fam: intern(g('familia')), pc: intern(g('procedimiento')), ai: g('ai') || null, du: g('duracion') || null,
+      _t: nrm(t), _ln: nrm(ln), _o: nrm(o), _g: nrm(gan + ' ' + nif), _c: cp, _pr: nrm(pr),
     };
   }
-  async function cargar(meses) {
-    const idx = (R.D.hist || []).slice(0, meses);
-    const falta = idx.filter((m) => !S.cargados.has(m.m));
+  const contiene = (r, w) => r._t.includes(w) || r._ln.includes(w) || r._o.includes(w) || r._g.includes(w) || r._c.includes(w) || r._pr.includes(w);
+  function mesDesde(meses) { const d = hoy(); d.setDate(1); d.setMonth(d.getMonth() - meses); return d.toISOString().slice(0, 7); }
+  function archivos(meses, tipo) {
+    const desde = mesDesde(meses);
+    return (R.D.hist || []).filter((m) => m.m >= desde && (!tipo || (m.t || tipo) === tipo));
+  }
+  async function cargar(meses, tipo) {
+    const falta = archivos(meses, tipo).filter((m) => !S.cargados.has(m.f));
     if (!falta.length) return;
     let hechos = 0;
+    const mb = Math.max(1, Math.round(falta.reduce((a, m) => a + (m.kb || 0), 0) / 1024));
     const aviso = (t) => { const el = document.getElementById('hLoad'); if (el) el.textContent = t; };
-    aviso(`Cargando histórico… 0/${falta.length} meses`);
+    aviso(`Cargando histórico… 0/${falta.length} (${mb} MB la primera vez)`);
     const cola = [...falta];
     async function trabajador() {
       while (cola.length) {
         const m = cola.shift();
         try {
           const d = await R.leer(m.f, m.h);
-          for (const f of d.filas) S.filas.push(aObjeto(d.campos, f));
-          S.cargados.add(m.m);
-        } catch (e) { console.warn('histórico', m.m, e); }
-        aviso(`Cargando histórico… ${++hechos}/${falta.length} meses`);
+          const ix = {}; d.campos.forEach((c, i) => { ix[c] = i; });
+          for (const f of d.filas) S.filas.push(aObjeto(ix, f));
+          S.cargados.add(m.f);
+        } catch (e) { console.warn('histórico', m.f, e); }
+        aviso(`Cargando histórico… ${++hechos}/${falta.length} (${mb} MB la primera vez)`);
       }
     }
     await Promise.all([trabajador(), trabajador(), trabajador()]);
-    S.filas.sort((a, b) => b.f.localeCompare(a.f));
+    S.filas.sort((a, b) => (a.f < b.f ? 1 : a.f > b.f ? -1 : 0));
     aviso('');
   }
-  function asegurar(meses) {
-    const prom = (S.cargando || Promise.resolve()).then(() => cargar(meses));
+  function asegurar(meses, tipo = H.tipo) {
+    const prom = (S.cargando || Promise.resolve()).then(() => cargar(meses, tipo));
     S.cargando = prom.catch(() => {});
     return prom;
   }
@@ -101,8 +112,8 @@
       if (h.tipo && r.tp !== h.tipo) return false;
       if (h.ca && r.ca !== h.ca) return false;
       if (ps.length && !r.cpv.some((c) => ps.some((p) => c.startsWith(p)))) return false;
-      if (tq.si.length && !tq.si.every((w) => r._txt.includes(w))) return false;
-      if (tq.no.length && tq.no.some((w) => r._txt.includes(w))) return false;
+      if (tq.si.length && !tq.si.every((w) => contiene(r, w))) return false;
+      if (tq.no.length && tq.no.some((w) => contiene(r, w))) return false;
       if (org && !r._o.includes(org)) return false;
       if (gan && !r._g.includes(gan)) return false;
       const imp = r.pz ?? r.im ?? 0;
@@ -175,6 +186,7 @@
         <label class="check-inline"><input type="checkbox" id="hIa" ${H.ia ? 'checked' : ''}> Con análisis IA</label>
         <button class="btn small ghost" id="hReset">Limpiar</button>
       </div>
+      <div class="saved" id="hSaved"></div>
       <div class="subtabs" id="hVistas">
         ${[['buscar', 'Adjudicaciones y precios'], ['empresas', 'Competidores'], ['organismos', 'Organismos'], ['renovaciones', 'Próximas renovaciones']]
           .map(([k, v]) => `<button data-v="${k}" class="${S.vista === k ? 'active' : ''}">${v}</button>`).join('')}
@@ -189,13 +201,37 @@
     };
     let t;
     el.querySelectorAll('.hsearch input, .hfilters input').forEach((i) => i.addEventListener('input', () => { clearTimeout(t); t = setTimeout(() => { leer(); pintar(); }, 250); }));
-    el.querySelectorAll('.hfilters select, #hIa').forEach((i) => i.addEventListener('change', async () => { leer(); await asegurar(H.meses); pintar(); }));
+    el.querySelectorAll('.hfilters select, #hIa').forEach((i) => i.addEventListener('change', async () => { leer(); await asegurar(H.meses, H.tipo); pintar(); }));
     $('#hReset').onclick = () => { Object.assign(H, H0); R.store.set('hist', H); base(); pintar(); };
-    $('#hVistas').onclick = async (e) => { const b = e.target.closest('button'); if (!b) return; S.vista = b.dataset.v; pagina = 1; base(); if (S.vista !== 'buscar') await asegurar(24); pintar(); };
+    pintarGuardadas();
+    $('#hVistas').onclick = async (e) => { const b = e.target.closest('button'); if (!b) return; S.vista = b.dataset.v; pagina = 1; base(); await asegurar(S.vista === 'renovaciones' ? 24 : H.meses, H.tipo); pintar(); };
+  }
+
+  // ---------- búsquedas guardadas ----------
+  const CLAVES_B = ['q', 'cpv', 'tipo', 'ca', 'org', 'gan', 'imin', 'imax', 'ia'];
+  function pintarGuardadas() {
+    const el = $('#hSaved'); if (!el) return;
+    const lista = R.store.get('hbusq', []);
+    const hay = H.q || H.cpv || H.org || H.gan || H.ca;
+    el.innerHTML = lista.map((b, i) => `<span class="chip saved-chip" data-hb="${i}">★ ${R.esc(b.n)} <button class="x" data-hbx="${i}" aria-label="Quitar">×</button></span>`).join('')
+      + (hay ? '<button class="btn small ghost" id="hGuardar">☆ Guardar esta búsqueda</button>' : '');
+    el.onclick = async (e) => {
+      const x = e.target.closest('[data-hbx]');
+      if (x) { const l = R.store.get('hbusq', []); l.splice(+x.dataset.hbx, 1); R.store.set('hbusq', l); pintarGuardadas(); return; }
+      const c = e.target.closest('[data-hb]');
+      if (c) { const b = R.store.get('hbusq', [])[+c.dataset.hb]; Object.assign(H, H0, { meses: H.meses }, b.h); R.store.set('hist', H); pagina = 1; base(); await asegurar(H.meses, H.tipo); pintar(); return; }
+      if (e.target.id === 'hGuardar') {
+        const h = {}; CLAVES_B.forEach((k) => { if (H[k]) h[k] = H[k]; });
+        const n = [H.q, H.cpv && 'CPV ' + H.cpv, H.org, H.gan, H.ca].filter(Boolean).join(' · ').slice(0, 60) || 'Búsqueda';
+        const l = R.store.get('hbusq', []).filter((b) => b.n !== n); l.unshift({ n, h }); R.store.set('hbusq', l.slice(0, 20));
+        R.toast('Búsqueda guardada'); pintarGuardadas();
+      }
+    };
   }
 
   function pintar() {
     const out = $('#hOut'); if (!out) return;
+    pintarGuardadas();
     if (!(R.D.hist || []).length) { out.innerHTML = '<div class="empty">Todavía no hay histórico. Se carga solo en la primera actualización (o lanza «historico» en GitHub).</div>'; return; }
     const v = filtrar();
     if (S.vista === 'empresas') return pintarEmpresas(out, v);
@@ -334,7 +370,7 @@
     det.scrollTop = 0;
   }
   async function fichaEmpresa(k) {
-    await asegurar(24);
+    await asegurar(Math.max(12, H.meses));
     const v = S.filas.filter((r) => (r.nif || r.g) === k);
     ficha(v[0]?.g || k, k, v, 'emp');
   }
@@ -345,21 +381,32 @@
   }
 
   // ---------- simulador de baja para una licitación abierta ----------
-  async function simular(x, el) {
-    if (!el || !(R.D.hist || []).length) return;
-    el.innerHTML = '<h3>Simulador de baja</h3><p class="muted">Cargando histórico…</p>';
-    await asegurar(24);
+  // Bajas ganadoras de suministros parecidos (mismo CPV, cuanto más concreto mejor)
+  async function parecidas(x) {
+    if (!(R.D.hist || []).length) return null;
+    await asegurar(12, '1');
     const cpv0 = (x.cpv || [])[0] || '';
     let pref = '', v = [];
     for (const n of [5, 4, 3, 2]) {
       pref = cpv0.slice(0, n);
+      if (!pref) break;
       v = S.filas.filter((r) => r.tp === '1' && bajaOk(r) && r.cpv.some((c) => c.startsWith(pref)));
       if (v.length >= 20) break;
     }
-    if (v.length < 5) { el.innerHTML = '<h3>Simulador de baja</h3><p class="muted">No hay suficientes adjudicaciones parecidas en el histórico.</p>'; return; }
+    if (v.length < 5) return null;
+    return { pref, v, bajas: v.map((r) => r.b).sort((a, b) => a - b) };
+  }
+  const probGanar = (bajas, b) => bajas.filter((y) => y <= b).length / bajas.length;
+
+  async function simular(x, el) {
+    if (!el || !(R.D.hist || []).length) return;
+    el.innerHTML = '<h3>Simulador de baja</h3><p class="muted">Cargando histórico…</p>';
+    const p = await parecidas(x);
+    if (!p) { el.innerHTML = '<h3>Simulador de baja</h3><p class="muted">No hay suficientes adjudicaciones parecidas en el histórico.</p>'; return; }
+    const { pref, v } = p;
     const delOrg = v.filter((r) => r.o === x.o);
-    const bajas = v.map((r) => r.b).sort((a, b) => a - b);
-    const prob = (b) => bajas.filter((y) => y <= b).length / bajas.length;
+    const bajas = p.bajas;
+    const prob = (b) => probGanar(bajas, b);
     const pz = x.i || x.ve;
     const filas = [0, 5, 10, 15, 20, 25, 30, 40].map((b) => `<tr><td class="num">${b}%</td><td class="num">${pz ? R.eur(pz * (1 - b / 100)) : '—'}</td><td><div class="bar"><span style="width:${Math.round(100 * prob(b))}%"></span></div></td><td class="num"><strong>${Math.round(100 * prob(b))}%</strong></td></tr>`).join('');
     const ofs = v.filter((r) => r.of > 0).map((r) => r.of);
@@ -398,12 +445,12 @@
     if (!document.getElementById('tab-historico').classList.contains('active')) { R.ir('historico'); return; }
     const d = document.getElementById('drawer'); if (d && !d.hidden) d.querySelector('[data-close]')?.click();
     base();
-    await asegurar(Math.max(H.meses, 3));
+    await asegurar(Math.max(H.meses, 3), H.tipo);
     base(); pintar();
   }
   function init(api) {
     R = api;
     Object.assign(H, R.store.get('hist', {}));
   }
-  window.HIST = { init, mostrar, simular, fichaEmpresa, fichaOrganismo };
+  window.HIST = { init, mostrar, simular, fichaEmpresa, fichaOrganismo, parecidas, probGanar, cpvNombre };
 })();

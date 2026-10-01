@@ -11,6 +11,9 @@ Radar privado de licitaciones de **suministro** para Grupo BadBen23:
 - **Fichas de competidores y organismos**: dónde gana cada empresa y con qué baja; a quién compra cada organismo, si hay un ganador habitual y qué contratos le vencen.
 - **Próximas renovaciones**: contratos que terminan en los próximos meses y se volverán a licitar (para preparar la oferta antes de que salgan).
 - **Tu tablero** (Me interesa → Pidiendo precios → Preparando → Presentada → Ganada/Perdida), notas, calendario de cierres y botón para copiar la petición de precios en inglés para proveedores.
+- **Calculadora de oferta** en cada licitación: costes de proveedor, flete, arancel y entrega + tu margen → precio, baja, beneficio y probabilidad de ganar según el histórico, y qué precio necesitas para ganar.
+- **Checklist para presentar** cada licitación y **Mi trabajo** en Inicio con tus plazos.
+- **Excel** de la lista filtrada, **búsquedas guardadas** en el histórico y botón **Compartir** (WhatsApp/correo).
 - **Aviso por Telegram** (y/o correo) cuando entra una licitación A.
 - Web con contraseña, funciona en móvil (se puede instalar como app) y ordenador.
 
@@ -65,6 +68,14 @@ A partir de ahí se actualiza sola cada 3 horas (7:17 a 23:17).
 - **Histórico:** escribe palabras (`uniformes policía -bomberos "ropa de trabajo"`) o CPV (`1811 18143 3913`). Pestañas: precios, competidores, organismos y próximas renovaciones. Pulsa una empresa u organismo para ver su ficha.
 - **Mi tablero:** arrastra las tarjetas entre columnas. Se guarda en ese navegador: usa *Exportar/Importar* para pasarlo al móvil.
 - En el móvil: menú del navegador → *Añadir a pantalla de inicio*.
+
+## Comprobar que todo funciona
+Pestaña **Actions → Prueba completa → Run workflow**: ejecuta el radar con datos reales sin publicar nada, prueba la descarga de pliegos y abre la web en un navegador automático (móvil y ordenador). Si sale en verde, todo funciona.
+
+## Si algo falla
+- La fecha de «Actualizado» sale en **rojo** si los datos tienen más de 12 horas: mira **Actions** en GitHub.
+- Una ejecución en rojo no pierde lo avanzado: guarda la base de datos y publica la web igualmente; el error aparece en el resumen de la ejecución.
+- El tablero, las notas, la calculadora y el checklist se guardan en cada dispositivo: usa **Exportar/Importar** del tablero para pasarlos del PC al móvil.
 
 ## Ajustes
 Todo lo que decide la nota está en `config.json` (familias de producto, CPV, palabras, penalizaciones, umbrales, cuántas analiza la IA por pasada). Edítalo en GitHub (icono del lápiz) y guarda: se aplica en la siguiente ejecución.

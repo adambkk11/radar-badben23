@@ -102,6 +102,47 @@ def _groq(prompt: str, modelo: str, clave: str) -> dict:
     return _json(r.json()["choices"][0]["message"]["content"])
 
 
+def _normalizar(r: dict) -> dict:
+    """Asegura los tipos que espera la web aunque el modelo conteste a su manera."""
+    if not isinstance(r, dict):
+        raise ValueError("la IA no devolvió un objeto JSON")
+    def lista(v):
+        if v is None:
+            return []
+        if isinstance(v, str):
+            return [x.strip(" -•") for x in v.replace(";", "\n").split("\n") if x.strip(" -•")]
+        if isinstance(v, list):
+            return [x if isinstance(x, (str, dict)) else str(x) for x in v]
+        return [str(v)]
+    def texto(v):
+        if v is None or isinstance(v, str):
+            return v
+        if isinstance(v, (list, tuple)):
+            return "; ".join(str(x) for x in v)
+        return str(v)
+    def numero(v):
+        try:
+            return float(str(v).replace("%", "").replace(",", ".")) if v not in (None, "") else None
+        except ValueError:
+            return None
+    out = dict(r)
+    for k in ("que_se_compra", "puntos_fuertes", "riesgos"):
+        out[k] = [texto(x) if not isinstance(x, str) else x for x in lista(r.get(k))]
+    out["lotes"] = [x for x in lista(r.get("lotes")) if isinstance(x, dict)]
+    for k in ("resumen", "otros_criterios", "plazo_entrega", "duracion_contrato", "muestras", "idioma_oferta",
+              "garantia_definitiva", "penalizaciones", "socio_recomendado", "motivo", "entregas"):
+        out[k] = texto(r.get(k))
+    for k in ("peso_precio", "plazo_entrega_dias", "encaje"):
+        out[k] = numero(r.get(k))
+    sol = r.get("solvencia")
+    out["solvencia"] = sol if isinstance(sol, dict) else ({"detalle": texto(sol)} if sol else None)
+    if isinstance(out.get("solvencia"), dict):
+        out["solvencia"] = {k: (texto(v) if k in ("detalle", "admite_empresa_nueva") else v) for k, v in out["solvencia"].items()}
+    rec = (texto(r.get("recomendacion")) or "").lower().strip()
+    out["recomendacion"] = next((x for x in ("presentarse", "estudiar", "descartar") if x in rec), "estudiar")
+    return out
+
+
 def disponible() -> bool:
     return bool(os.environ.get("GEMINI_API_KEY") or os.environ.get("GROQ_API_KEY"))
 
@@ -128,7 +169,7 @@ def analizar(it: dict, pliegos: list[dict], cfg: dict) -> tuple[dict, str]:
         pdfs = [p for p in pdf_escaneados if len(p) < 15 * 1024 * 1024][:2]
         for m in lista(ia["modelo_gemini"]):
             try:
-                return _gemini(prompt, pdfs, m, g), m
+                return _normalizar(_gemini(prompt, pdfs, m, g)), m
             except Exception as ex:
                 errores.append(f"{m}: {ex}")
     if q:
@@ -137,7 +178,7 @@ def analizar(it: dict, pliegos: list[dict], cfg: dict) -> tuple[dict, str]:
                               socios=socios, meta=_meta(it), texto=texto[:ia.get("max_caracteres_groq", 22000)])
         for m in lista(ia["modelo_groq"]):
             try:
-                return _groq(corto, m, q), m
+                return _normalizar(_groq(corto, m, q)), m
             except Exception as ex:
                 errores.append(f"{m}: {ex}")
     raise RuntimeError(" | ".join(errores) or "sin clave de IA configurada")

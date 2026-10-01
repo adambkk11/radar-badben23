@@ -36,23 +36,28 @@ def _historico(con, cfg: dict, destino: Path, cif, analisis: dict) -> list[dict]
         viejo.unlink()
     meses = cfg.get("historico", {}).get("meses_web", 24)
     desde = (dt.date.today().replace(day=1) - dt.timedelta(days=31 * meses)).isoformat()
-    filas = con.execute("SELECT * FROM adjudicaciones WHERE fecha>=? ORDER BY fecha DESC", (desde,)).fetchall()
-    por_mes: dict[str, list] = {}
+    filas = con.execute("SELECT * FROM adjudicaciones WHERE fecha>=? AND fecha<=? ORDER BY fecha DESC",
+                        (desde, dt.date.today().isoformat()))
+    n = 0
+    por_mes: dict[tuple[str, str], list] = {}
     for f in filas:
+        n += 1
         a = analisis.get(f["id"])
         ia = {"r": a.get("recomendacion"), "s": a.get("resumen"), "m": a.get("motivo")} if a else None
         fila = [f["fecha"], f["titulo"], f["lote"], f["lote_nombre"], f["organo"], f["ccaa"], f["provincia"], f["tipo"],
                 f["cpv"], f["presupuesto"], f["importe"], f["baja"], f["ofertas"], f["ganador"], f["ganador_nif"],
                 f["enlace"], f["familia"], f["procedimiento"], ia, f["duracion_meses"]]
-        por_mes.setdefault(f["fecha"][:7], []).append(fila)
+        por_mes.setdefault((f["tipo"] or "x", f["fecha"][:7]), []).append(fila)
     indice, total = [], 0
-    for mes, lista in sorted(por_mes.items(), reverse=True):
+    for (tipo, mes), lista in sorted(por_mes.items(), key=lambda kv: kv[0][1], reverse=True):
         if len(mes) != 7:
             continue
-        tam, huella = _escribir(carpeta / mes, {"campos": HIST_CAMPOS, "filas": lista}, cif)
+        nombre = f"{tipo}-{mes}"
+        tam, huella = _escribir(carpeta / nombre, {"campos": HIST_CAMPOS, "filas": lista}, cif)
         total += tam
-        indice.append({"m": mes, "n": len(lista), "f": f"hist/{mes}{'.enc' if cif else '.json.gz'}", "h": huella})
-    print(f"[web] histórico: {len(filas)} adjudicaciones en {len(indice)} meses ({total // 1024} KB)")
+        indice.append({"m": mes, "t": tipo, "n": len(lista), "f": f"hist/{nombre}{'.enc' if cif else '.json.gz'}",
+                       "h": huella, "kb": tam // 1024})
+    print(f"[web] histórico: {n} adjudicaciones en {len(indice)} archivos ({total // 1024} KB)")
     return indice
 
 

@@ -91,8 +91,12 @@
     $('#updated').textContent = 'Actualizado ' + new Date(datos.generado).toLocaleString('es-ES', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' });
     store.set('ultimaVisita', new Date().toISOString().slice(0, 10));
     $('#q').value = F.q; $('#sort').value = orden;
-    montarFiltros(); pintarInicio(); pintarLista(); pintarTablero(); pintarCalendario(); pintarCompetencia();
+    window.RADAR = { D, BY, filtrar, ordenar, abrir, ir, store, esc, eur, pct, fecha, toast, seg, setSeg, ESTADOS, diasTxt, copiar };
+    if (window.TRABAJO) window.TRABAJO.init(window.RADAR);
     if (window.HIST) window.HIST.init({ leer, store, esc, eur, pct, norm, fecha, toast, ir, D });
+    montarFiltros(); pintarInicio(); pintarLista(); pintarTablero(); pintarCalendario(); pintarCompetencia();
+    const horas = (Date.now() - new Date(datos.generado).getTime()) / 3600000;
+    if (horas > 12) { $('#updated').classList.add('viejo'); $('#updated').title = 'La actualización automática puede estar fallando: revisa Actions en GitHub'; toast(`Datos de hace ${Math.round(horas)} horas`); }
     const h = location.hash.slice(1);
     if (h.startsWith('l=')) abrir(decodeURIComponent(h.slice(2)));
   }
@@ -249,6 +253,7 @@
         <div class="kpi" data-go='{"prio":[],"rec":"presentarse"}'><div class="v" style="color:var(--accent)">${reco.length}</div><div class="l">La IA dice «presentarse»</div></div>
         <div class="kpi" data-go='{"prio":[]}'><div class="v">${t.abiertas}</div><div class="l">Suministros abiertos</div></div>
       </div>
+      <div id="hoyMio"></div>
       <div class="grid2">
         <div>
           <div class="box"><div class="box-h"><h2>Las mejores para presentarse</h2><a href="#" data-go='{"prio":["A"],"noarm":true}'>ver todas</a></div>
@@ -264,6 +269,7 @@
           <div class="box"><div class="muted" style="font-size:.85rem">Datos oficiales de la Plataforma de Contratación del Sector Público y plataformas autonómicas agregadas. ${t.analizadas} licitaciones analizadas con IA · ${t.adjudicaciones} adjudicaciones en el histórico.</div></div>
         </div>
       </div>`;
+    if (window.TRABAJO) window.TRABAJO.inicio();
   }
 
   // ---------- ficha ----------
@@ -328,16 +334,19 @@
       </div>
       ${docs ? `<div class="actions">${docs}</div>` : ''}
       ${aiHtml}
+      <div class="box" id="dCalc"></div>
       <div class="box" id="dSim"></div>
+      <div class="box" id="dCheck"></div>
       <div class="box"><h3>Por qué tiene esta nota</h3><ul class="clean">${(x.m || []).map((m) => `<li>${esc(m)}</li>`).join('')}</ul></div>
       ${compHtml}${sim}${lotes}${crit}${req}
       <div class="box"><h3>Mis notas</h3><textarea id="dNotas" placeholder="Proveedor, precio conseguido, dudas del pliego…">${esc(s.notas || '')}</textarea></div>`;
     $('#drawer').hidden = false; document.body.style.overflow = 'hidden';
-    $('#dEstado').onchange = (e) => { setSeg(id, { estado: e.target.value || undefined }); if (!e.target.value) { const ss = seg(); if (ss[id] && !ss[id].notas) setSeg(id, null); } toast('Guardado en tu tablero'); pintarTablero(); pintarLista(); };
+    $('#dEstado').onchange = (e) => { setSeg(id, { estado: e.target.value || undefined }); if (!e.target.value) { const ss = seg(); if (ss[id] && !ss[id].notas) setSeg(id, null); } toast('Guardado en tu tablero'); pintarTablero(); pintarLista(); pintarInicio(); };
     $('#dNotas').oninput = (e) => setSeg(id, { notas: e.target.value });
     $('#dRfq').onclick = () => copiar(rfq(x), 'Petición de precios copiada');
     $('#dLink').onclick = () => copiar(location.href, 'Enlace copiado');
     if (window.HIST && (D.hist || []).length) window.HIST.simular(x, $('#dSim')); else $('#dSim').remove();
+    if (window.TRABAJO) window.TRABAJO.ficha(x); else { $('#dCalc').remove(); $('#dCheck').remove(); }
   }
   function cerrar() { if ($('#drawer').hidden) return; $('#drawer').hidden = true; document.body.style.overflow = ''; history.replaceState(null, '', location.pathname); }
   function copiar(t, msg) { (navigator.clipboard?.writeText(t) || Promise.reject()).then(() => toast(msg)).catch(() => { prompt('Copia el texto:', t); }); }
@@ -352,7 +361,7 @@
     }).join('');
     $('#tab-tablero').innerHTML = `
       <div class="box-h"><h2>Mi tablero</h2><div class="actions" style="margin:0"><button class="btn small" id="kExp">Exportar</button><label class="btn small">Importar<input type="file" id="kImp" accept="application/json" hidden></label></div></div>
-      <p class="muted">Arrastra las tarjetas entre columnas (en el móvil, cambia el estado desde la ficha). Se guarda en este dispositivo; usa Exportar/Importar para pasarlo a otro.</p>
+      <p class="muted">Arrastra las tarjetas entre columnas (en el móvil, cambia el estado desde la ficha). Se guarda en este dispositivo (con tus notas, calculadoras y checklists); usa Exportar/Importar para pasarlo a otro.</p>
       <div class="kanban">${cols}</div>`;
     $$('.kcard').forEach((c) => c.addEventListener('dragstart', (e) => e.dataTransfer.setData('text/plain', c.dataset.id)));
     $$('.col').forEach((col) => {
@@ -360,8 +369,23 @@
       col.addEventListener('dragleave', () => col.classList.remove('drop'));
       col.addEventListener('drop', (e) => { e.preventDefault(); col.classList.remove('drop'); setSeg(e.dataTransfer.getData('text/plain'), { estado: col.dataset.col }); pintarTablero(); });
     });
-    $('#kExp').onclick = () => { const a = document.createElement('a'); a.href = URL.createObjectURL(new Blob([JSON.stringify(seg(), null, 1)], { type: 'application/json' })); a.download = 'radar-tablero.json'; a.click(); };
-    $('#kImp').onchange = async (e) => { try { const d = JSON.parse(await e.target.files[0].text()); store.set('seguimiento', { ...seg(), ...d }); pintarTablero(); toast('Tablero importado'); } catch { toast('Archivo no válido'); } };
+    $('#kExp').onclick = () => {
+      const todo = { v: 2, seguimiento: seg(), calc: store.get('calc', {}), check: store.get('check', {}), hbusq: store.get('hbusq', []) };
+      const a = document.createElement('a'); a.href = URL.createObjectURL(new Blob([JSON.stringify(todo, null, 1)], { type: 'application/json' }));
+      a.download = `radar-tablero-${new Date().toISOString().slice(0, 10)}.json`; a.click();
+    };
+    $('#kImp').onchange = async (e) => {
+      try {
+        const d = JSON.parse(await e.target.files[0].text());
+        if (d && d.v === 2) {
+          store.set('seguimiento', { ...seg(), ...(d.seguimiento || {}) });
+          store.set('calc', { ...store.get('calc', {}), ...(d.calc || {}) });
+          store.set('check', { ...store.get('check', {}), ...(d.check || {}) });
+          if (Array.isArray(d.hbusq)) store.set('hbusq', d.hbusq);
+        } else store.set('seguimiento', { ...seg(), ...d });
+        pintarTablero(); pintarInicio(); pintarLista(); toast('Tablero importado');
+      } catch { toast('Archivo no válido'); }
+    };
   }
 
   // ---------- calendario ----------

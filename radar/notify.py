@@ -64,10 +64,14 @@ def telegram(texto: str) -> bool:
     tok, chat = os.environ.get("TELEGRAM_TOKEN"), os.environ.get("TELEGRAM_CHAT_ID")
     if not (tok and chat and texto):
         return False
+    ok = True
     for i in range(0, len(texto), 3800):
-        requests.post(f"https://api.telegram.org/bot{tok}/sendMessage",
-                      json={"chat_id": chat, "text": texto[i:i + 3800], "disable_web_page_preview": True}, timeout=60)
-    return True
+        r = requests.post(f"https://api.telegram.org/bot{tok}/sendMessage",
+                          json={"chat_id": chat, "text": texto[i:i + 3800], "disable_web_page_preview": True}, timeout=60)
+        if not r.ok:
+            print(f"[aviso] Telegram respondió {r.status_code}: {r.text[:200]}")
+            ok = False
+    return ok
 
 
 def email(texto: str, asunto: str) -> bool:

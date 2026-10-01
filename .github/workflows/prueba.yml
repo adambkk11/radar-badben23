@@ -1,15 +1,19 @@
-name: Prueba de conexión
+name: Prueba completa
 
+# Ejecuta el radar con datos reales SIN publicar nada (contraseña de prueba) y prueba la web en un navegador.
 on:
   workflow_dispatch:
 
 env:
   PYTHONUNBUFFERED: "1"
+  SITE_PASSWORD: prueba-ci
+  # Prueba corta: pocas páginas del feed y sin descargar meses del histórico
+  CONFIG_PRIVADA: '{"feeds": {"max_paginas_por_feed": 4, "dias_atras_primera_vez": 2}, "historico": {"meses_por_ejecucion": 0}}'
 
 jobs:
   prueba:
     runs-on: ubuntu-latest
-    timeout-minutes: 120
+    timeout-minutes: 90
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -17,22 +21,50 @@ jobs:
           python-version: "3.12"
           cache: pip
       - run: pip install -r requirements.txt
-      - name: Histórico real (mes actual y anterior), sin publicar nada
-        run: python run.py historico 1
-      - name: Resumen
+      - name: Radar completo (novedades, IA si hay clave, web, avisos)
+        env:
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
+        run: python run.py todo
+      - name: Pliegos (descarga y lectura de PDF)
         run: |
-          python - <<'EOF'
-          import sqlite3, os
+          python - <<'PY'
+          import json, sqlite3, sys
+          sys.path.insert(0, ".")
+          from radar.docs import obtener_pliegos
+          from radar.privado import abrir_db
+          from pathlib import Path
+          abrir_db(Path("data/radar.db"), "prueba-ci")
+          c = sqlite3.connect("data/radar.db")
+          filas = c.execute("select data from licitaciones where estado='PUB' order by puntuacion desc limit 3").fetchall()
+          for (d,) in filas:
+              it = json.loads(d)
+              p = obtener_pliegos(it, max_docs=2)
+              print(it["titulo"][:70], "->", [(x["tipo"], len(x["texto"])) for x in p])
+          PY
+      - name: Resumen de datos
+        run: |
+          python - <<'PY'
+          import sqlite3
           c = sqlite3.connect("data/radar.db")
           q = lambda s: c.execute(s).fetchall()
           print("licitaciones:", q("select estado, count(*) from licitaciones group by 1"))
-          print("abiertas A/B:", q("select prioridad, count(*) from licitaciones where estado='PUB' group by 1"))
-          print("adjudicaciones por tipo:", q("select tipo, count(*), round(avg(baja),1), round(avg(ofertas),1) from adjudicaciones group by 1"))
-          print("con duración:", q("select count(*) from adjudicaciones where duracion_meses is not null"))
-          print("meses:", q("select substr(fecha,1,7), count(*) from adjudicaciones group by 1 order by 1 desc limit 8"))
-          print("top A:", q("select puntuacion, substr(titulo,1,90) from licitaciones where estado='PUB' order by puntuacion desc limit 15"))
-          print("ejemplo:", q("select fecha, substr(titulo,1,60), lote, substr(lote_nombre,1,50), cpv, presupuesto, importe, baja, ofertas, ganador from adjudicaciones where tipo='1' limit 5"))
-          tot = sum(os.path.getsize(os.path.join("site/hist", f)) for f in os.listdir("site/hist"))
-          print("web: data", os.path.getsize("site/data.json.gz") // 1024, "KB · histórico", tot // 1024, "KB")
-          print("db", os.path.getsize("data/radar.db") // 1048576, "MB")
-          EOF
+          print("prioridad abiertas:", q("select prioridad, count(*) from licitaciones where estado='PUB' group by 1"))
+          print("adjudicaciones:", q("select tipo, count(*) from adjudicaciones group by 1"))
+          PY
+          ls -la site site/hist | head -20
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - name: Probar la web en un navegador
+        run: |
+          npm init -y >/dev/null && npm i playwright@1 >/dev/null && npx playwright install --with-deps chromium >/dev/null
+          (cd site && python -m http.server 8765 >/dev/null 2>&1 &) && sleep 2
+          node tests/web_test.mjs
+      - name: Capturas
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: capturas
+          path: captura-*.png
+          retention-days: 3

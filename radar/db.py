@@ -83,7 +83,23 @@ def conectar(ruta: str | Path) -> sqlite3.Connection:
     con = sqlite3.connect(str(ruta))
     con.row_factory = sqlite3.Row
     con.executescript(ESQUEMA)
+    _migrar(con)
     return con
+
+
+def _migrar(con) -> None:
+    """Añade columnas nuevas a bases de datos creadas con versiones anteriores."""
+    esperadas = {
+        "adjudicaciones": {"tipo": "TEXT", "lote_nombre": "TEXT", "procedimiento": "TEXT", "ofertas_pyme": "REAL",
+                           "duracion_meses": "REAL"},
+    }
+    for tabla, cols in esperadas.items():
+        actuales = {r[1] for r in con.execute(f"PRAGMA table_info({tabla})")}
+        for col, tipo in cols.items():
+            if col not in actuales:
+                con.execute(f"ALTER TABLE {tabla} ADD COLUMN {col} {tipo}")
+    con.execute("CREATE INDEX IF NOT EXISTS ix_adj_tipo_fecha ON adjudicaciones(tipo, fecha)")
+    con.commit()
 
 
 def get_estado(con, clave: str, defecto: str = "") -> str:

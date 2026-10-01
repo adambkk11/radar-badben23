@@ -29,7 +29,7 @@ concurrency:
 jobs:
   radar:
     runs-on: ubuntu-latest
-    timeout-minutes: 300
+    timeout-minutes: 330
     environment:
       name: github-pages
       url: ${{ steps.deploy.outputs.page_url }}
@@ -60,6 +60,7 @@ jobs:
           fi
 
       - name: Ejecutar radar
+        id: radar
         env:
           SITE_PASSWORD: ${{ secrets.SITE_PASSWORD }}
           CONFIG_PRIVADA: ${{ secrets.CONFIG_PRIVADA }}
@@ -78,18 +79,24 @@ jobs:
           else
             python run.py "$ORDEN"
           fi
-          # asegura que la web siempre tiene datos
-          [ -f site/data.enc ] || python run.py web
 
+      # Aunque algo falle, se guarda lo avanzado y se publica la web
       - name: Guardar base de datos (cifrada)
+        if: always() && hashFiles('data/radar.db.enc') != ''
         uses: actions/cache/save@v4
         with:
           path: data/radar.db.enc
           key: radar-db-${{ github.run_id }}
 
-      - uses: actions/configure-pages@v5
-      - uses: actions/upload-pages-artifact@v3
+      - name: Preparar web
+        if: always() && hashFiles('site/data.enc') != ''
+        uses: actions/configure-pages@v5
+      - name: Subir web
+        if: always() && hashFiles('site/data.enc') != ''
+        uses: actions/upload-pages-artifact@v3
         with:
           path: site
-      - id: deploy
+      - name: Publicar web
+        id: deploy
+        if: always() && hashFiles('site/data.enc') != ''
         uses: actions/deploy-pages@v4
