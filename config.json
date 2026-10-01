@@ -23,7 +23,8 @@
     "tipos": ["1", "3"],
     "meses_guardar": 24,
     "meses_web": 24,
-    "meses_carga_automatica": 3
+    "meses_por_ejecucion": 1,
+    "minutos_max_historico": 230
   },
 
   "familias": {

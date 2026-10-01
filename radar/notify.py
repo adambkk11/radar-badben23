@@ -18,8 +18,9 @@ def resumen(con, cfg: dict, desde: str | None = None, web: str = "") -> tuple[st
     desde = desde or (dt.datetime.now(dt.timezone.utc) - dt.timedelta(hours=26)).isoformat(timespec="seconds")
     prios = cfg["alertas"].get("solo_prioridad", ["A"])
     filas = con.execute(
-        f"SELECT * FROM licitaciones WHERE estado='PUB' AND primera_vez>=? AND prioridad IN ({','.join('?' * len(prios))}) "
-        "ORDER BY puntuacion DESC LIMIT 25", (desde, *prios)).fetchall()
+        f"SELECT * FROM licitaciones WHERE estado='PUB' AND primera_vez>=? AND fecha_fin>=? "
+        f"AND prioridad IN ({','.join('?' * len(prios))}) ORDER BY puntuacion DESC LIMIT 25",
+        (desde, dt.date.today().isoformat(), *prios)).fetchall()
     if not filas:
         return "", 0
     lineas = [f"📋 Radar BadBen23 — {len(filas)} licitaciones nuevas que encajan\n"]

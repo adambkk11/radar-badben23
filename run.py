@@ -85,9 +85,31 @@ def limpiar(con, c: dict) -> None:
     con.execute("VACUUM")
 
 
-def historico(con, c: dict, meses: int) -> None:
+def historico(con, c: dict, meses: int, max_meses: int | None = None, incluir_actual: bool = True,
+              limite_min: float | None = None) -> int:
+    """Carga los meses del histórico oficial que falten, del más reciente al más antiguo.
+    Los meses ya completos se recuerdan y no se vuelven a descargar."""
+    hechos = set(json.loads(get_estado(con, "hist_cargados") or "[]"))
+    actual = dt.date.today().strftime("%Y%m")
+    inicio, n = time.time(), 0
     for ym in meses_atras(meses):
-        cargar_mes(con, c, ym)
+        if ym == actual and not incluir_actual:
+            continue
+        if ym in hechos and ym != actual:
+            continue
+        if max_meses is not None and n >= max_meses:
+            break
+        if limite_min and (time.time() - inicio) / 60 > limite_min:
+            print("[histórico] se acaba el tiempo de esta ejecución; seguirá en la próxima")
+            break
+        res = cargar_mes(con, c, ym)
+        n += 1
+        if ym != actual and "estado" in res:
+            hechos.add(ym)
+            set_estado(con, "hist_cargados", json.dumps(sorted(hechos)))
+            con.commit()
+    print(f"[histórico] {n} meses cargados; completos: {len(hechos)}")
+    return n
 
 
 def main(argv: list[str]) -> None:
@@ -98,16 +120,20 @@ def main(argv: list[str]) -> None:
     abrir_db(DB, clave)
     con = conectar(DB)
     web_url = os.environ.get("RADAR_URL", "")
-    if orden == "todo" and not con.execute("SELECT 1 FROM adjudicaciones LIMIT 1").fetchone():
-        # base de datos nueva (o perdida): carga sola los últimos meses para tener histórico y abiertas
-        print("[radar] base de datos vacía: cargo el histórico reciente")
-        historico(con, c, c.get("historico", {}).get("meses_carga_automatica", 3))
+    h = c.get("historico", {})
+    if orden == "todo" and not con.execute("SELECT 1 FROM licitaciones LIMIT 1").fetchone():
+        # base de datos nueva (o perdida): el mes en curso trae las licitaciones abiertas
+        print("[radar] base de datos vacía: cargo el mes en curso")
+        historico(con, c, 0)
     if orden in ("actualizar", "todo"):
         actualizar(con, c)
+    if orden == "todo":
+        # el histórico se completa solo, poco a poco (un mes pasado por ejecución)
+        historico(con, c, h.get("meses_guardar", 24), max_meses=h.get("meses_por_ejecucion", 1), incluir_actual=False)
     if orden in ("analizar", "todo"):
         analizar(con, c, int(argv[2]) if len(argv) > 2 and orden == "analizar" else None)
     if orden == "historico":
-        historico(con, c, int(argv[2]) if len(argv) > 2 else 6)
+        historico(con, c, int(argv[2]) if len(argv) > 2 else 12, limite_min=h.get("minutos_max_historico", 230))
     if orden == "cargar":
         print(cargar_fichero(con, argv[2], c, argv[3] if len(argv) > 3 else "fichero"))
     if orden in ("web", "todo", "historico", "cargar"):

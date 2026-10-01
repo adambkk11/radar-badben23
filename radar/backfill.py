@@ -4,6 +4,7 @@ from __future__ import annotations
 import datetime as dt
 import os
 import tempfile
+import time
 import zipfile
 
 import requests
@@ -64,19 +65,23 @@ def cargar_mes(con, cfg: dict, ym: str) -> dict:
     for nombre, patron in URLS:
         url = patron.format(ym=ym)
         print(f"[histórico] {nombre} {ym}: {url}")
+        t0 = time.time()
         ruta = _bajar(url)
         if not ruta:
             continue
+        print(f"  descargado {os.path.getsize(ruta) // 1048576} MB en {time.time() - t0:.0f} s")
         tot = [0, 0, 0]
+        t0 = time.time()
         try:
             with zipfile.ZipFile(ruta) as z:
-                for n in z.namelist():
-                    if not n.endswith(".atom"):
-                        continue
+                atoms = [n for n in z.namelist() if n.endswith(".atom")]
+                for i, n in enumerate(atoms, 1):
                     items, _, _ = parse_feed(z.read(n), nombre)
                     a, b, c = procesar_items(con, items, cfg, ahora)
                     tot = [tot[0] + a, tot[1] + b, tot[2] + c]
                     con.commit()
+                    if i % 25 == 0 or i == len(atoms):
+                        print(f"  {i}/{len(atoms)} archivos · {time.time() - t0:.0f} s · {tot[2]} adjudicaciones")
         except zipfile.BadZipFile as ex:
             print("  ZIP dañado:", ex)
         finally:

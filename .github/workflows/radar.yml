@@ -19,6 +19,9 @@ permissions:
   pages: write
   id-token: write
 
+env:
+  PYTHONUNBUFFERED: "1"
+
 concurrency:
   group: radar
   cancel-in-progress: false

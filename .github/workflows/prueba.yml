@@ -3,10 +3,13 @@ name: Prueba de conexión
 on:
   workflow_dispatch:
 
+env:
+  PYTHONUNBUFFERED: "1"
+
 jobs:
   prueba:
     runs-on: ubuntu-latest
-    timeout-minutes: 90
+    timeout-minutes: 120
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -31,4 +34,5 @@ jobs:
           print("ejemplo:", q("select fecha, substr(titulo,1,60), lote, substr(lote_nombre,1,50), cpv, presupuesto, importe, baja, ofertas, ganador from adjudicaciones where tipo='1' limit 5"))
           tot = sum(os.path.getsize(os.path.join("site/hist", f)) for f in os.listdir("site/hist"))
           print("web: data", os.path.getsize("site/data.json.gz") // 1024, "KB · histórico", tot // 1024, "KB")
+          print("db", os.path.getsize("data/radar.db") // 1048576, "MB")
           EOF
