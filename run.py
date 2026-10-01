@@ -43,11 +43,13 @@ def analizar(con, c: dict, n: int | None = None) -> int:
         return 0
     n = n or c["ia"]["max_analisis_por_ejecucion"]
     hoy = dt.date.today().isoformat()
+    # los fallos se reintentan pasadas 6 horas
+    reintento = (dt.datetime.now(dt.timezone.utc) - dt.timedelta(hours=6)).isoformat(timespec="seconds")
     filas = con.execute(
         """SELECT l.* FROM licitaciones l LEFT JOIN analisis a ON a.id=l.id
-           WHERE l.estado='PUB' AND l.fecha_fin>=? AND l.puntuacion>=? AND (a.id IS NULL OR (a.data IS NULL AND a.fecha<?))
+           WHERE l.estado='PUB' AND l.fecha_fin>=? AND l.puntuacion>=? AND (a.id IS NULL OR (a.data IS NULL AND (a.fecha<? OR a.error LIKE '%no longer available%' OR a.error LIKE '%límite de uso%')))
            ORDER BY l.puntuacion DESC, l.fecha_fin ASC LIMIT ?""",
-        (hoy, c["ia"]["nota_minima_para_analizar"], hoy, n)).fetchall()
+        (hoy, c["ia"]["nota_minima_para_analizar"], reintento, n)).fetchall()
     hechos = 0
     for f in filas:
         it = json.loads(f["data"])
@@ -60,8 +62,12 @@ def analizar(con, c: dict, n: int | None = None) -> int:
             con.execute("INSERT OR REPLACE INTO analisis(id, fecha, modelo, data, error) VALUES(?,?,?,?,NULL)",
                         (f["id"], ahora, modelo, json.dumps(res, ensure_ascii=False)))
             hechos += 1
+        except ai.SinIA as ex:
+            # sin modelos disponibles (cuota diaria agotada, claves...): no marcamos la licitación, se reintenta luego
+            print("   [IA] ningún modelo disponible ahora; se reintenta en la próxima ejecución:", str(ex)[:300])
+            break
         except Exception as ex:
-            print("   error:", ex)
+            print("   error:", str(ex)[:400])
             con.execute("INSERT OR REPLACE INTO analisis(id, fecha, modelo, data, error) VALUES(?,?,?,NULL,?)",
                         (f["id"], ahora, "", str(ex)[:500]))
         con.commit()

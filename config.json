@@ -132,7 +132,7 @@
 
   "ia": {
     "proveedor": "gemini",
-    "modelo_gemini": ["gemini-2.5-flash", "gemini-flash-latest", "gemini-2.5-flash-lite"],
+    "modelo_gemini": ["gemini-flash-latest", "gemini-flash-lite-latest"],
     "modelo_groq": ["llama-3.3-70b-versatile", "openai/gpt-oss-120b", "llama-3.1-8b-instant"],
     "max_caracteres_groq": 22000,
     "max_analisis_por_ejecucion": 25,
