@@ -14,6 +14,7 @@ from __future__ import annotations
 import datetime as dt
 import json
 import os
+import signal
 import sys
 import time
 from pathlib import Path
@@ -151,6 +152,17 @@ def main(argv: list[str]) -> int:
             print(f"::warning::{nombre} falló: {ex}", flush=True)
             return None
 
+    def punto_de_guardado():
+        """Copia cifrada intermedia: si la ejecución se corta después, no se pierde lo descargado."""
+        try:
+            con.commit()
+            cerrar_db(DB, clave)
+        except Exception as ex:  # noqa: BLE001
+            print(f"::warning::no se pudo guardar la copia intermedia: {ex}", flush=True)
+
+    # GitHub corta con SIGTERM al pasarse del tiempo o al cancelar: lo tratamos como Ctrl+C para cerrar bien
+    signal.signal(signal.SIGTERM, lambda *_: (_ for _ in ()).throw(KeyboardInterrupt()))
+
     try:
         if orden == "todo" and not con.execute("SELECT 1 FROM licitaciones LIMIT 1").fetchone():
             # base de datos nueva (o perdida): el mes en curso trae las licitaciones abiertas
@@ -158,15 +170,18 @@ def main(argv: list[str]) -> int:
             fase("histórico (mes en curso)", historico, con, c, 0)
         if orden in ("actualizar", "todo"):
             fase("novedades de la Plataforma", actualizar, con, c)
+            punto_de_guardado()
         if orden == "todo":
             # el histórico se completa solo, poco a poco (un mes pasado por ejecución)
             fase("histórico (un mes más)", historico, con, c, h.get("meses_guardar", 24),
                  max_meses=h.get("meses_por_ejecucion", 1), incluir_actual=False)
+            punto_de_guardado()
         if orden in ("analizar", "todo"):
             fase("análisis IA", analizar, con, c, int(argv[2]) if len(argv) > 2 and orden == "analizar" else None)
         if orden == "historico":
             fase("histórico", historico, con, c, int(argv[2]) if len(argv) > 2 else 12,
                  limite_min=h.get("minutos_max_historico", 230))
+            punto_de_guardado()
         if orden == "cargar":
             print(cargar_fichero(con, argv[2], c, argv[3] if len(argv) > 3 else "fichero"))
         if orden in ("todo", "historico"):
