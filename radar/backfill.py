@@ -29,24 +29,44 @@ def meses_atras(n: int, hoy: dt.date | None = None) -> list[str]:
     return out
 
 
+def _bajar(url: str) -> str | None:
+    """Descarga el ZIP a un temporal. Devuelve la ruta o None si no está disponible o llega dañado."""
+    for intento in range(3):
+        with tempfile.NamedTemporaryFile(suffix=".zip", delete=False) as tmp:
+            ruta = tmp.name
+            try:
+                with requests.get(url, headers={"User-Agent": UA}, stream=True, timeout=(30, 300)) as r:
+                    if r.status_code != 200:
+                        print(f"  no disponible (HTTP {r.status_code})")
+                        os.unlink(ruta)
+                        return None
+                    for chunk in r.iter_content(1 << 20):
+                        tmp.write(chunk)
+            except requests.RequestException as ex:
+                print(f"  error de descarga (intento {intento + 1}):", ex)
+                os.unlink(ruta)
+                continue
+        if zipfile.is_zipfile(ruta):
+            return ruta
+        with open(ruta, "rb") as f:
+            inicio = f.read(200)
+        os.unlink(ruta)
+        if b"<html" in inicio.lower() or b"<!doctype" in inicio.lower():
+            print("  no disponible todavía (la Plataforma devuelve una página, no un ZIP)")
+            return None
+        print(f"  ZIP incompleto, reintento {intento + 1}")
+    return None
+
+
 def cargar_mes(con, cfg: dict, ym: str) -> dict:
     ahora = dt.datetime.now(dt.timezone.utc).isoformat(timespec="seconds")
     res = {}
     for nombre, patron in URLS:
         url = patron.format(ym=ym)
         print(f"[histórico] {nombre} {ym}: {url}")
-        with tempfile.NamedTemporaryFile(suffix=".zip", delete=False) as tmp:
-            try:
-                with requests.get(url, headers={"User-Agent": UA}, stream=True, timeout=(30, 300)) as r:
-                    if r.status_code != 200:
-                        print(f"  no disponible (HTTP {r.status_code})")
-                        continue
-                    for chunk in r.iter_content(1 << 20):
-                        tmp.write(chunk)
-            except requests.RequestException as ex:
-                print("  error:", ex)
-                continue
-            ruta = tmp.name
+        ruta = _bajar(url)
+        if not ruta:
+            continue
         tot = [0, 0, 0]
         try:
             with zipfile.ZipFile(ruta) as z:
@@ -57,6 +77,8 @@ def cargar_mes(con, cfg: dict, ym: str) -> dict:
                     a, b, c = procesar_items(con, items, cfg, ahora)
                     tot = [tot[0] + a, tot[1] + b, tot[2] + c]
                     con.commit()
+        except zipfile.BadZipFile as ex:
+            print("  ZIP dañado:", ex)
         finally:
             os.unlink(ruta)
         res[nombre] = {"nuevas": tot[0], "actualizadas": tot[1], "adjudicaciones": tot[2]}

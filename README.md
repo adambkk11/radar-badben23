@@ -5,7 +5,11 @@ Radar privado de licitaciones de **suministro** para Grupo BadBen23:
 - Descarga cada 3 horas **todas** las licitaciones de la Plataforma de Contratación del Estado y de las plataformas autonómicas agregadas (Cataluña, Madrid, Euskadi, Andalucía, Galicia, Navarra, La Rioja…). Solo usa datos abiertos oficiales.
 - Puntúa cada una de 0 a 100 según tu modelo (producto, simplificado, no armonizado, peso del precio, importe, plazo…) y explica por qué.
 - La **IA gratuita** (Google Gemini y, si falla, Groq) lee los pliegos de las mejores y te dice: qué se compra, solvencia, si admite empresa nueva (art. 89.1 LCSP), ROLECE, muestras, plazos, riesgos, qué socio usar y si presentarse.
-- **Competencia**: quién gana cada tipo de producto y con qué baja (adjudicaciones oficiales).
+- **Histórico completo** (24 meses de TODAS las adjudicaciones de suministros y obras de España): búsqueda por palabras clave (con frases entre comillas y exclusiones con -palabra) y por CPV, filtros por comunidad, organismo, empresa e importe, y descarga a Excel (CSV).
+- **Precio para ganar**: baja ganadora típica, reparto de bajas, ofertas por lote y % de contratos con un solo licitador para cualquier búsqueda.
+- **Simulador de baja** en cada licitación abierta: con X% de baja, en cuántos contratos parecidos habrías ganado y a qué precio.
+- **Fichas de competidores y organismos**: dónde gana cada empresa y con qué baja; a quién compra cada organismo, si hay un ganador habitual y qué contratos le vencen.
+- **Próximas renovaciones**: contratos que terminan en los próximos meses y se volverán a licitar (para preparar la oferta antes de que salgan).
 - **Tu tablero** (Me interesa → Pidiendo precios → Preparando → Presentada → Ganada/Perdida), notas, calendario de cierres y botón para copiar la petición de precios en inglés para proveedores.
 - **Aviso por Telegram** (y/o correo) cuando entra una licitación A.
 - Web con contraseña, funciona en móvil (se puede instalar como app) y ordenador.
@@ -46,7 +50,7 @@ Aviso por correo (opcional): pon `"email": true` en `config.json` y crea `SMTP_U
 
 ### 5. Primera ejecución
 1. Pestaña **Actions** → si lo pide, *I understand my workflows, go ahead and enable them*.
-2. **Radar de licitaciones → Run workflow** → orden `historico`, meses `6` → **Run**. Carga 6 meses de adjudicaciones para la competencia (tarda 20-60 min).
+2. **Radar de licitaciones → Run workflow** → orden `historico`, meses `12` → **Run**. Carga 12 meses de adjudicaciones (tarda 1-3 horas). Si te lo saltas, la primera ejecución automática carga sola los últimos 3 meses.
 3. Cuando acabe, **Run workflow** otra vez con `todo`.
 4. Tu web: **https://adambkk11.github.io/radar-badben23/** → entra con tu `SITE_PASSWORD`.
 
@@ -58,6 +62,7 @@ A partir de ahí se actualiza sola cada 3 horas (7:17 a 23:17).
 - **Inicio:** las mejores (A), las que cierran pronto y cuántas hay por producto.
 - **Licitaciones:** buscador + filtros (producto, comunidad, importe, días, simplificado, sin armonizar, peso del precio, recomendación IA). Pulsa una para ver la ficha completa.
 - En la ficha: *Abrir en la plataforma oficial*, pliegos, análisis IA, por qué tiene esa nota, competencia y adjudicaciones parecidas, *Seguimiento*, notas y *Copiar petición de precios*.
+- **Histórico:** escribe palabras (`uniformes policía -bomberos "ropa de trabajo"`) o CPV (`1811 18143 3913`). Pestañas: precios, competidores, organismos y próximas renovaciones. Pulsa una empresa u organismo para ver su ficha.
 - **Mi tablero:** arrastra las tarjetas entre columnas. Se guarda en ese navegador: usa *Exportar/Importar* para pasarlo al móvil.
 - En el móvil: menú del navegador → *Añadir a pantalla de inicio*.
 
