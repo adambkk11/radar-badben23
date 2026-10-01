@@ -143,7 +143,8 @@ def guardar_adjudicaciones(con, it: dict, familia: str) -> int:
         lote = lotes.get(r.get("lote") or "", {})
         presupuesto = lote.get("importe") or it.get("importe")
         baja = None
-        if presupuesto and presupuesto > 0 and r["importe"] is not None and r["importe"] <= presupuesto * 1.5:
+        # fuera de 0,2x-1,5x del presupuesto suele ser precio unitario o acuerdo marco: no es una baja real
+        if presupuesto and presupuesto > 0 and r["importe"] is not None and presupuesto * 0.2 <= r["importe"] <= presupuesto * 1.5:
             baja = round(100 * (1 - r["importe"] / presupuesto), 2)
         cpv = lote.get("cpv") or it["cpv"]
         con.execute(

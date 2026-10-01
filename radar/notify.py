@@ -40,6 +40,26 @@ def resumen(con, cfg: dict, desde: str | None = None, web: str = "") -> tuple[st
     return "\n".join(lineas), len(filas)
 
 
+def renovaciones(con, cfg: dict, dias: int = 90, web: str = "") -> tuple[str, int]:
+    """Resumen semanal: contratos de tus productos que terminan pronto y se volverán a licitar."""
+    hoy = dt.date.today()
+    filas = con.execute(
+        """SELECT *, date(fecha, '+' || CAST(ROUND(duracion_meses) AS INTEGER) || ' months') AS fin FROM adjudicaciones
+           WHERE familia != '' AND duracion_meses BETWEEN 6 AND 60
+             AND date(fecha, '+' || CAST(ROUND(duracion_meses) AS INTEGER) || ' months') BETWEEN ? AND ?
+           ORDER BY importe DESC LIMIT 20""", (hoy.isoformat(), (hoy + dt.timedelta(days=dias)).isoformat())).fetchall()
+    if not filas:
+        return "", 0
+    fams = cfg.get("familias", {})
+    lineas = [f"🔁 Radar BadBen23 — {len(filas)} contratos de tus productos vencen en los próximos {dias} días\n"]
+    for f in filas:
+        lineas.append(f"• {(f['lote_nombre'] or f['titulo'])[:100]}\n   {f['organo'][:60]} · {_eur(f['importe'])} · "
+                      f"lo tiene {f['ganador'][:40]} · vence {f['fin']} · {fams.get(f['familia'], {}).get('nombre', '')}\n   {f['enlace']}")
+    if web:
+        lineas.append(f"\nMás en el radar → Histórico → Próximas renovaciones: {web}")
+    return "\n".join(lineas), len(filas)
+
+
 def telegram(texto: str) -> bool:
     tok, chat = os.environ.get("TELEGRAM_TOKEN"), os.environ.get("TELEGRAM_CHAT_ID")
     if not (tok and chat and texto):

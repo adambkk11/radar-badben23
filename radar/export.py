@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import datetime as dt
 import gzip
+import hashlib
 import json
 from pathlib import Path
 
@@ -15,16 +16,16 @@ HIST_CAMPOS = ["fecha", "titulo", "lote", "lote_nombre", "organo", "ccaa", "prov
                "importe", "baja", "ofertas", "ganador", "ganador_nif", "enlace", "familia", "procedimiento", "ai", "duracion"]
 
 
-def _escribir(ruta: Path, obj, cif) -> int:
-    """Guarda obj comprimido (y cifrado si hay contraseña). Devuelve bytes escritos."""
-    crudo = gzip.compress(json.dumps(obj, ensure_ascii=False, separators=(",", ":")).encode())
+def _escribir(ruta: Path, obj, cif) -> tuple[int, str]:
+    """Guarda obj comprimido (y cifrado si hay contraseña). Devuelve (bytes, huella del contenido)."""
+    crudo = gzip.compress(json.dumps(obj, ensure_ascii=False, separators=(",", ":")).encode(), mtime=0)
     if cif:
         ruta = ruta.with_suffix(".enc")
         ruta.write_text(json.dumps(cif.cifrar(crudo)))
     else:
         ruta = ruta.with_suffix(".json.gz")
         ruta.write_bytes(crudo)
-    return ruta.stat().st_size
+    return ruta.stat().st_size, hashlib.sha256(ruta.read_bytes()).hexdigest()[:16]
 
 
 def _historico(con, cfg: dict, destino: Path, cif, analisis: dict) -> list[dict]:
@@ -48,17 +49,24 @@ def _historico(con, cfg: dict, destino: Path, cif, analisis: dict) -> list[dict]
     for mes, lista in sorted(por_mes.items(), reverse=True):
         if len(mes) != 7:
             continue
-        total += _escribir(carpeta / mes, {"campos": HIST_CAMPOS, "filas": lista}, cif)
-        indice.append({"m": mes, "n": len(lista), "f": f"hist/{mes}{'.enc' if cif else '.json.gz'}"})
+        tam, huella = _escribir(carpeta / mes, {"campos": HIST_CAMPOS, "filas": lista}, cif)
+        total += tam
+        indice.append({"m": mes, "n": len(lista), "f": f"hist/{mes}{'.enc' if cif else '.json.gz'}", "h": huella})
     print(f"[web] histórico: {len(filas)} adjudicaciones en {len(indice)} meses ({total // 1024} KB)")
     return indice
 
 
 def construir(con, cfg: dict, destino: str | Path, clave: str | None) -> dict:
+    from .db import get_estado, set_estado
     from .privado import Cifrador
     destino = Path(destino)
     destino.mkdir(parents=True, exist_ok=True)
-    cif = Cifrador(clave) if clave else None
+    cif = None
+    if clave:
+        sal = get_estado(con, "sal_web")
+        cif = Cifrador(clave, bytes.fromhex(sal) if sal else None)
+        set_estado(con, "sal_web", cif.sal.hex())
+        con.commit()
     hoy = dt.date.today().isoformat()
     analisis = {r["id"]: json.loads(r["data"]) for r in con.execute("SELECT id, data FROM analisis WHERE data IS NOT NULL")}
 
@@ -101,6 +109,6 @@ def construir(con, cfg: dict, destino: str | Path, clave: str | None) -> dict:
     }
     (destino / "data.enc").unlink(missing_ok=True)
     (destino / "data.json.gz").unlink(missing_ok=True)
-    tam = _escribir(destino / "data", datos, cif)
+    tam, _ = _escribir(destino / "data", datos, cif)
     print(f"[web] {len(lic)} licitaciones abiertas exportadas ({tam // 1024} KB){' cifradas' if cif else ' SIN cifrar'}")
     return datos["totales"]

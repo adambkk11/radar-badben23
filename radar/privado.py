@@ -30,15 +30,19 @@ def cifrar(datos: bytes, clave: str) -> dict:
 
 
 class Cifrador:
-    """Misma sal para todos los archivos de una exportación: el navegador deriva la clave una sola vez."""
+    """Misma sal para todos los archivos (el navegador deriva la clave una sola vez) y cifrado determinista:
+    el mismo contenido da el mismo archivo, así el móvil no vuelve a descargar los meses que no cambian."""
 
-    def __init__(self, clave: str):
+    def __init__(self, clave: str, sal: bytes | None = None):
         from cryptography.hazmat.primitives.ciphers.aead import AESGCM
-        self.sal = os.urandom(16)
-        self.aes = AESGCM(_clave(clave, self.sal))
+        self.sal = sal or os.urandom(16)
+        self._k = _clave(clave, self.sal)
+        self.aes = AESGCM(self._k)
 
     def cifrar(self, datos: bytes) -> dict:
-        iv = os.urandom(12)
+        import hashlib
+        import hmac
+        iv = hmac.new(self._k, datos, hashlib.sha256).digest()[:12]  # único por contenido
         b = lambda x: base64.b64encode(x).decode()
         return {"v": 1, "kdf": "PBKDF2-SHA256", "it": ITER, "salt": b(self.sal), "iv": b(iv),
                 "ct": b(self.aes.encrypt(iv, datos, None))}

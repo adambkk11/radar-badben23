@@ -150,6 +150,15 @@ def main(argv: list[str]) -> None:
                 print("[aviso] email:", notify.email(texto, f"Radar BadBen23: {n} licitaciones nuevas"))
         else:
             print("[aviso] nada nuevo que avisar")
+        semana = dt.date.today().strftime("%G-%V")
+        if dt.date.today().weekday() == 0 and get_estado(con, "aviso_renovaciones") != semana:
+            texto, n = notify.renovaciones(con, c, web=web_url)
+            set_estado(con, "aviso_renovaciones", semana)
+            con.commit()
+            if n and c["alertas"].get("telegram"):
+                print("[aviso] renovaciones telegram:", notify.telegram(texto))
+            if n and c["alertas"].get("email"):
+                print("[aviso] renovaciones email:", notify.email(texto, f"Radar BadBen23: {n} contratos vencen pronto"))
     if orden in ("todo", "historico"):
         limpiar(con, c)
     con.close()

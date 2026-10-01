@@ -97,8 +97,8 @@
     if (h.startsWith('l=')) abrir(decodeURIComponent(h.slice(2)));
   }
 
-  async function leer(f) {
-    const r = await fetch(f + '?v=' + encodeURIComponent(D.generado));
+  async function leer(f, h) {
+    const r = await fetch(f + '?v=' + encodeURIComponent(h || D.generado));
     if (!r.ok) throw new Error('HTTP ' + r.status);
     return f.endsWith('.enc') ? descifrar(await r.json(), PWD) : gunzip(await r.arrayBuffer());
   }

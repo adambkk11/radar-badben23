@@ -75,7 +75,7 @@
       while (cola.length) {
         const m = cola.shift();
         try {
-          const d = await R.leer(m.f);
+          const d = await R.leer(m.f, m.h);
           for (const f of d.filas) S.filas.push(aObjeto(d.campos, f));
           S.cargados.add(m.m);
         } catch (e) { console.warn('histórico', m.m, e); }
