@@ -24,6 +24,7 @@
     "meses_guardar": 24,
     "meses_web": 24,
     "meses_por_ejecucion": 1,
+    "descargas_simultaneas": 4,
     "minutos_max_historico": 230
   },
 

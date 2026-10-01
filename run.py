@@ -22,7 +22,7 @@ RAIZ = Path(__file__).parent
 sys.path.insert(0, str(RAIZ))
 
 from radar import ai, notify  # noqa: E402
-from radar.backfill import cargar_mes, meses_atras  # noqa: E402
+from radar.backfill import cargar_meses, meses_atras  # noqa: E402
 from radar.db import conectar, get_estado, set_estado  # noqa: E402
 from radar.docs import obtener_pliegos  # noqa: E402
 from radar.export import construir  # noqa: E402
@@ -92,22 +92,22 @@ def historico(con, c: dict, meses: int, max_meses: int | None = None, incluir_ac
     hechos = set(json.loads(get_estado(con, "hist_cargados") or "[]"))
     actual = dt.date.today().strftime("%Y%m")
     inicio, n = time.time(), 0
-    for ym in meses_atras(meses):
-        if ym == actual and not incluir_actual:
-            continue
-        if ym in hechos and ym != actual:
-            continue
-        if max_meses is not None and n >= max_meses:
-            break
+    pendientes = [ym for ym in meses_atras(meses)
+                  if not (ym == actual and not incluir_actual) and not (ym in hechos and ym != actual)]
+    if max_meses is not None:
+        pendientes = pendientes[:max_meses]
+    lote = c.get("historico", {}).get("descargas_simultaneas", 4)
+    for i in range(0, len(pendientes), lote):
         if limite_min and (time.time() - inicio) / 60 > limite_min:
             print("[histórico] se acaba el tiempo de esta ejecución; seguirá en la próxima")
             break
-        res = cargar_mes(con, c, ym)
-        n += 1
-        if ym != actual and "estado" in res:
-            hechos.add(ym)
-            set_estado(con, "hist_cargados", json.dumps(sorted(hechos)))
-            con.commit()
+        grupo = pendientes[i:i + lote]
+        for ym, res in cargar_meses(con, c, grupo, paralelo=lote).items():
+            n += 1
+            if ym != actual and "estado" in res:
+                hechos.add(ym)
+        set_estado(con, "hist_cargados", json.dumps(sorted(hechos)))
+        con.commit()
     print(f"[histórico] {n} meses cargados; completos: {len(hechos)}")
     return n
 
