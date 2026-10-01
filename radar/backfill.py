@@ -12,6 +12,8 @@ import requests
 from .fetch import UA, procesar_items
 from .parser import parse_feed
 
+MAX_MIN_DESCARGA = 75
+
 URLS = [
     ("estado", "https://contrataciondelestado.es/sindicacion/sindicacion_643/licitacionesPerfilesContratanteCompleto3_{ym}.zip"),
     ("agregadas", "https://contrataciondelestado.es/sindicacion/sindicacion_1044/PlataformasAgregadasSinMenores_{ym}.zip"),
@@ -41,8 +43,19 @@ def _bajar(url: str) -> str | None:
                         print(f"  no disponible (HTTP {r.status_code})")
                         os.unlink(ruta)
                         return None
+                    t0, n, aviso = time.time(), 0, 100
                     for chunk in r.iter_content(1 << 20):
                         tmp.write(chunk)
+                        n += len(chunk)
+                        if n >= aviso * 1048576:
+                            print(f"  … {url.rsplit('/', 1)[-1]}: {n // 1048576} MB en {time.time() - t0:.0f} s", flush=True)
+                            aviso += 100
+                        if time.time() - t0 > MAX_MIN_DESCARGA * 60:
+                            raise TimeoutError(f"{n // 1048576} MB en {MAX_MIN_DESCARGA} min")
+            except TimeoutError as ex:
+                print("  descarga demasiado lenta, se deja para otra ejecución:", ex)
+                os.unlink(ruta)
+                return None
             except requests.RequestException as ex:
                 print(f"  error de descarga (intento {intento + 1}):", ex)
                 os.unlink(ruta)
