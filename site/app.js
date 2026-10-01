@@ -35,20 +35,23 @@
     return JSON.parse(await new Response(ds).text());
   }
   async function descifrar(enc, pwd) {
-    const km = await crypto.subtle.importKey('raw', new TextEncoder().encode(pwd), 'PBKDF2', false, ['deriveKey']);
-    const key = await crypto.subtle.deriveKey({ name: 'PBKDF2', salt: b64(enc.salt), iterations: enc.it, hash: 'SHA-256' },
-      km, { name: 'AES-GCM', length: 256 }, false, ['decrypt']);
+    const ck = enc.salt + '\n' + pwd;
+    if (!CLAVES[ck]) CLAVES[ck] = crypto.subtle.importKey('raw', new TextEncoder().encode(pwd), 'PBKDF2', false, ['deriveKey'])
+      .then((km) => crypto.subtle.deriveKey({ name: 'PBKDF2', salt: b64(enc.salt), iterations: enc.it, hash: 'SHA-256' },
+        km, { name: 'AES-GCM', length: 256 }, false, ['decrypt']));
+    const key = await CLAVES[ck];
     const plano = await crypto.subtle.decrypt({ name: 'AES-GCM', iv: b64(enc.iv) }, key, b64(enc.ct));
     return gunzip(plano);
   }
-  let ENC = null;
+  let ENC = null, PWD = null;
+  const CLAVES = {};
   async function arrancar() {
     const t = '?t=' + Date.now();
     let r = await fetch('data.enc' + t).catch(() => null);
     if (r && r.ok) {
       ENC = await r.json();
       const guardada = store.get('pwd', null) || sessionStorage.getItem('radar:pwd');
-      if (guardada) { try { iniciar(await descifrar(ENC, guardada)); return; } catch { store.del('pwd'); } }
+      if (guardada) { try { const d = await descifrar(ENC, guardada); PWD = guardada; iniciar(d); return; } catch { store.del('pwd'); } }
       $('#lock').hidden = false; $('#pwd').focus();
       return;
     }
@@ -62,6 +65,7 @@
     $('#lockMsg').textContent = 'Abriendo…';
     try {
       const d = await descifrar(ENC, pwd);
+      PWD = pwd;
       try { sessionStorage.setItem('radar:pwd', pwd); } catch { /* */ }
       if ($('#remember').checked) store.set('pwd', pwd);
       iniciar(d);
@@ -76,7 +80,7 @@
   ];
   const seg = () => store.get('seguimiento', {});
   const setSeg = (id, obj) => { const s = seg(); if (obj === null) delete s[id]; else s[id] = { ...(s[id] || {}), ...obj, t: Date.now() }; store.set('seguimiento', s); };
-  const F = Object.assign({ q: '', prio: ['A', 'B'], fam: [], ca: [], imin: '', imax: '', dmax: '', simpl: false, noarm: true, pmin: '', ai: false, rec: '', nuevas: false }, store.get('filtros', {}));
+  const F = Object.assign({ q: '', cpv: '', prio: ['A', 'B'], fam: [], ca: [], imin: '', imax: '', dmax: '', simpl: false, noarm: true, pmin: '', ai: false, rec: '', nuevas: false }, store.get('filtros', {}));
   let orden = store.get('orden', 'nota'), pagina = 1;
   const ultimaVisita = store.get('ultimaVisita', '');
 
@@ -88,8 +92,15 @@
     store.set('ultimaVisita', new Date().toISOString().slice(0, 10));
     $('#q').value = F.q; $('#sort').value = orden;
     montarFiltros(); pintarInicio(); pintarLista(); pintarTablero(); pintarCalendario(); pintarCompetencia();
+    if (window.HIST) window.HIST.init({ leer, store, esc, eur, pct, norm, fecha, toast, ir, D });
     const h = location.hash.slice(1);
     if (h.startsWith('l=')) abrir(decodeURIComponent(h.slice(2)));
+  }
+
+  async function leer(f) {
+    const r = await fetch(f + '?v=' + encodeURIComponent(D.generado));
+    if (!r.ok) throw new Error('HTTP ' + r.status);
+    return f.endsWith('.enc') ? descifrar(await r.json(), PWD) : gunzip(await r.arrayBuffer());
   }
 
   // ---------- pestañas ----------
@@ -97,17 +108,20 @@
     $$('#tabs button').forEach((b) => b.classList.toggle('active', b.dataset.tab === tab));
     $$('.tab').forEach((s) => s.classList.toggle('active', s.id === 'tab-' + tab));
     window.scrollTo({ top: 0 });
+    if (tab === 'historico' && window.HIST) window.HIST.mostrar();
   }
   $('#tabs').onclick = (e) => { const b = e.target.closest('button'); if (b) ir(b.dataset.tab); };
 
   // ---------- filtros ----------
   function filtrar() {
     const q = norm(F.q).split(/\s+/).filter(Boolean);
+    const cps = String(F.cpv || '').split(/[\s,;]+/).map((c) => c.replace(/\D/g, '')).filter(Boolean);
     return L.filter((x) => {
       if (q.length && !q.every((w) => x._txt.includes(w))) return false;
       if (F.prio.length && !F.prio.includes(x.pa)) return false;
       if (F.fam.length && !F.fam.includes(x.f)) return false;
       if (F.ca.length && !F.ca.includes(x.ca || 'Sin dato')) return false;
+      if (cps.length && !(x.cpv || []).some((c) => cps.some((p) => c.startsWith(p)))) return false;
       const imp = x.i || x.ve || 0;
       if (F.imin && imp < +F.imin) return false;
       if (F.imax && imp > +F.imax) return false;
@@ -140,6 +154,7 @@
       <h3>Prioridad</h3><div class="chips">${chips('prio', [['A', L.filter((x) => x.pa === 'A').length], ['B', L.filter((x) => x.pa === 'B').length], ['C', L.filter((x) => x.pa === 'C').length]], (v) => v)}</div>
       <h3>Producto</h3><div class="chips">${chips('fam', Object.entries(fams).filter(([k]) => k).sort((a, b) => b[1] - a[1]), (v) => D.familias[v]?.nombre || v)}</div>
       <h3>Comunidad</h3><div class="chips">${chips('ca', Object.entries(cas).sort((a, b) => b[1] - a[1]), (v) => v)}</div>
+      <h3>CPV (empieza por)</h3><input type="text" id="fCpv" placeholder="ej. 1811 3913" value="${esc(F.cpv)}">
       <h3>Importe (sin IVA)</h3><div class="row2"><input type="number" id="fImin" placeholder="mín." value="${esc(F.imin)}"><input type="number" id="fImax" placeholder="máx." value="${esc(F.imax)}"></div>
       <h3>Cierra en</h3><select id="fDmax"><option value="">Cualquier fecha</option>${[3, 7, 14, 30].map((d) => `<option value="${d}" ${+F.dmax === d ? 'selected' : ''}>≤ ${d} días</option>`).join('')}</select>
       <h3>Condiciones</h3>
@@ -154,11 +169,11 @@
   $('#filters').addEventListener('click', (e) => {
     const c = e.target.closest('.chip');
     if (c) { const g = c.dataset.g, v = c.dataset.v; F[g] = F[g].includes(v) ? F[g].filter((x) => x !== v) : [...F[g], v]; cambiar(); montarFiltros(); }
-    if (e.target.id === 'fReset') { Object.assign(F, { q: '', prio: [], fam: [], ca: [], imin: '', imax: '', dmax: '', simpl: false, noarm: false, pmin: '', ai: false, rec: '', nuevas: false }); $('#q').value = ''; cambiar(); montarFiltros(); }
+    if (e.target.id === 'fReset') { Object.assign(F, { q: '', cpv: '', prio: [], fam: [], ca: [], imin: '', imax: '', dmax: '', simpl: false, noarm: false, pmin: '', ai: false, rec: '', nuevas: false }); $('#q').value = ''; cambiar(); montarFiltros(); }
     if (e.target.id === 'fClose') $('#filters').classList.remove('open');
   });
   $('#filters').addEventListener('change', (e) => {
-    const m = { fImin: 'imin', fImax: 'imax', fDmax: 'dmax', fPmin: 'pmin', fRec: 'rec' };
+    const m = { fCpv: 'cpv', fImin: 'imin', fImax: 'imax', fDmax: 'dmax', fPmin: 'pmin', fRec: 'rec' };
     const c = { fNoarm: 'noarm', fSimpl: 'simpl', fAi: 'ai', fNuevas: 'nuevas' };
     if (m[e.target.id]) F[m[e.target.id]] = e.target.value;
     if (c[e.target.id]) F[c[e.target.id]] = e.target.checked;
@@ -308,9 +323,12 @@
         <select id="dEstado"><option value="">Seguimiento…</option>${ESTADOS.map(([k, v]) => `<option value="${k}" ${s.estado === k ? 'selected' : ''}>${v}</option>`).join('')}</select>
         <button class="btn" id="dRfq">Copiar petición de precios</button>
         <button class="btn" id="dLink">Copiar enlace</button>
+        <button class="btn" data-hgo='${esc(JSON.stringify({ cpv: (x.cpv?.[0] || '').slice(0, 5), q: '', org: '', gan: '', tipo: '1' }))}'>Histórico de este CPV</button>
+        <button class="btn" data-org="${esc(x.o)}">Ficha del organismo</button>
       </div>
       ${docs ? `<div class="actions">${docs}</div>` : ''}
       ${aiHtml}
+      <div class="box" id="dSim"></div>
       <div class="box"><h3>Por qué tiene esta nota</h3><ul class="clean">${(x.m || []).map((m) => `<li>${esc(m)}</li>`).join('')}</ul></div>
       ${compHtml}${sim}${lotes}${crit}${req}
       <div class="box"><h3>Mis notas</h3><textarea id="dNotas" placeholder="Proveedor, precio conseguido, dudas del pliego…">${esc(s.notas || '')}</textarea></div>`;
@@ -319,6 +337,7 @@
     $('#dNotas').oninput = (e) => setSeg(id, { notas: e.target.value });
     $('#dRfq').onclick = () => copiar(rfq(x), 'Petición de precios copiada');
     $('#dLink').onclick = () => copiar(location.href, 'Enlace copiado');
+    if (window.HIST && (D.hist || []).length) window.HIST.simular(x, $('#dSim')); else $('#dSim').remove();
   }
   function cerrar() { if ($('#drawer').hidden) return; $('#drawer').hidden = true; document.body.style.overflow = ''; history.replaceState(null, '', location.pathname); }
   function copiar(t, msg) { (navigator.clipboard?.writeText(t) || Promise.reject()).then(() => toast(msg)).catch(() => { prompt('Copia el texto:', t); }); }

@@ -29,6 +29,21 @@ def cifrar(datos: bytes, clave: str) -> dict:
     return {"v": 1, "kdf": "PBKDF2-SHA256", "it": ITER, "salt": b(sal), "iv": b(iv), "ct": b(ct)}
 
 
+class Cifrador:
+    """Misma sal para todos los archivos de una exportación: el navegador deriva la clave una sola vez."""
+
+    def __init__(self, clave: str):
+        from cryptography.hazmat.primitives.ciphers.aead import AESGCM
+        self.sal = os.urandom(16)
+        self.aes = AESGCM(_clave(clave, self.sal))
+
+    def cifrar(self, datos: bytes) -> dict:
+        iv = os.urandom(12)
+        b = lambda x: base64.b64encode(x).decode()
+        return {"v": 1, "kdf": "PBKDF2-SHA256", "it": ITER, "salt": b(self.sal), "iv": b(iv),
+                "ct": b(self.aes.encrypt(iv, datos, None))}
+
+
 def descifrar(obj: dict, clave: str) -> bytes:
     from cryptography.hazmat.primitives.ciphers.aead import AESGCM
     d = base64.b64decode
@@ -42,8 +57,11 @@ def abrir_db(db: Path, clave: str | None) -> None:
         return
     if not clave:
         raise SystemExit("Falta SITE_PASSWORD para abrir data/radar.db.enc")
-    db.write_bytes(gzip.decompress(descifrar(json.loads(enc.read_text()), clave)))
-    print(f"[db] descifrada {enc.name}")
+    try:
+        db.write_bytes(gzip.decompress(descifrar(json.loads(enc.read_text()), clave)))
+        print(f"[db] descifrada {enc.name}")
+    except Exception as ex:  # contraseña cambiada o archivo dañado: se empieza de cero
+        print(f"[db] no se pudo abrir {enc.name} ({type(ex).__name__}); se crea una base nueva")
 
 
 def cerrar_db(db: Path, clave: str | None) -> None:

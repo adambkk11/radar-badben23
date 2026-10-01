@@ -18,6 +18,14 @@
 
   "solo_suministros": true,
 
+  "_historico": "Adjudicaciones pasadas que se guardan para el buscador del Histórico. tipos: 1=suministros, 2=servicios, 3=obras",
+  "historico": {
+    "tipos": ["1", "3"],
+    "meses_guardar": 24,
+    "meses_web": 24,
+    "meses_carga_automatica": 3
+  },
+
   "familias": {
     "vestuario": {
       "nombre": "Vestuario y uniformes",

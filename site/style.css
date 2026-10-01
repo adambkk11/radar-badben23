@@ -186,3 +186,40 @@ textarea { width: 100%; min-height: 80px; padding: 10px; border-radius: 10px; bo
   main { padding: 12px; }
   .drawer-panel { padding: 14px 14px 60px; }
 }
+
+/* Histórico */
+.hsearch { display: grid; grid-template-columns: 2fr 1fr; gap: 8px; margin-bottom: 8px; }
+.hsearch input, .hfilters input, .hfilters select, .filters input[type=text] { width: 100%; padding: 9px 10px; border-radius: 10px; border: 1px solid var(--line); background: var(--panel); color: var(--text); font: inherit; }
+.hfilters { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 8px; align-items: center; margin-bottom: 12px; }
+.check-inline { display: flex; gap: 6px; align-items: center; font-size: .9rem; color: var(--muted); }
+.subtabs { display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 14px; }
+.subtabs button { border: 1px solid var(--line); background: var(--panel); color: var(--muted); border-radius: 999px; padding: 6px 12px; font: inherit; font-size: .9rem; font-weight: 600; cursor: pointer; }
+.subtabs button.active { background: var(--accent); border-color: var(--accent); color: #fff; }
+.consejo { border-left: 4px solid var(--a); margin-bottom: 16px; }
+.small { font-size: .8rem; }
+.hlist { display: grid; }
+.hrow { border-bottom: 1px solid var(--line); padding: 10px 2px; cursor: pointer; }
+.hrow:hover { background: var(--panel-2); }
+.hrow.open { background: var(--panel-2); }
+.hrow-main { display: grid; grid-template-columns: 1fr auto; gap: 12px; }
+.hrow-det { margin-top: 10px; cursor: default; }
+.histo { display: flex; align-items: flex-end; gap: 6px; height: 130px; padding-top: 6px; }
+.hcol { flex: 1; display: flex; flex-direction: column; justify-content: flex-end; align-items: center; height: 100%; font-size: .7rem; color: var(--muted); }
+.hcol .hbar { width: 100%; min-height: 2px; background: var(--accent); border-radius: 4px 4px 0 0; }
+.hcol span { margin-top: 4px; white-space: nowrap; }
+.hcol b { color: var(--text); font-weight: 600; }
+.histo.meses .hcol span { font-size: .6rem; }
+@media (max-width: 600px) {
+  .hsearch { grid-template-columns: 1fr; }
+  .hfilters { grid-template-columns: 1fr 1fr; }
+  .hrow-main { grid-template-columns: 1fr; }
+  .hrow-main .side { text-align: left; display: block; }
+  .histo.meses .hcol span { display: none; }
+}
+.kpi { min-width: 0; }
+.kpi .v { overflow-wrap: anywhere; }
+td .bar { min-width: 70px; }
+@media (max-width: 600px) {
+  .kpi .v { font-size: 1.3rem; }
+  .check-inline { grid-column: 1 / -1; }
+}

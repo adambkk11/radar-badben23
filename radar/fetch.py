@@ -44,21 +44,26 @@ def descargar(url: str, intentos: int = 4, timeout: int = 180) -> bytes:
 
 
 def procesar_items(con, items: list[dict], cfg: dict, ahora: str) -> tuple[int, int, int]:
+    """Guarda licitaciones de suministro (abiertas o de nuestros productos) y TODAS las adjudicaciones
+    de los tipos de contrato configurados en historico.tipos (para el buscador del histórico)."""
     nuevas = actualizadas = adjud = 0
+    tipos_hist = set(cfg.get("historico", {}).get("tipos", ["1"]))
     for it in items:
-        if cfg.get("solo_suministros") and it["tipo"] != "1":
+        tipo = it["tipo"]
+        para_hist = tipo in tipos_hist and bool(it.get("resultados"))
+        para_radar = not cfg.get("solo_suministros") or tipo == "1"
+        if not (para_hist or para_radar):
             continue
         p = puntuar(it, cfg)
         abierta = it["estado"] in ABIERTOS
-        if not abierta and not p["familia"]:
-            continue  # cerrada y de un producto que no nos interesa: no ocupa espacio
-        if not abierta:
-            it = compactar(it)
-        if guardar_licitacion(con, it, p, ahora):
-            nuevas += 1
-        else:
-            actualizadas += 1
-        adjud += guardar_adjudicaciones(con, it, p["familia"])
+        if para_radar and (abierta or p["familia"]):
+            guardar = it if abierta else compactar(it)
+            if guardar_licitacion(con, guardar, p, ahora):
+                nuevas += 1
+            else:
+                actualizadas += 1
+        if para_hist:
+            adjud += guardar_adjudicaciones(con, it, p["familia"] if tipo == "1" else "")
     return nuevas, actualizadas, adjud
 
 

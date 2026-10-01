@@ -6,12 +6,29 @@ on:
 jobs:
   prueba:
     runs-on: ubuntu-latest
+    timeout-minutes: 90
     steps:
-      - name: Histórico mensual (ZIP)
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+      - run: pip install -r requirements.txt
+      - name: Histórico real (mes actual y anterior), sin publicar nada
+        run: python run.py historico 1
+      - name: Resumen
         run: |
-          M=$(date -u -d "$(date +%Y-%m-01) -1 month" +%Y%m)
-          for P in sindicacion/sindicacion_643/licitacionesPerfilesContratanteCompleto3_$M.zip sindicacion/sindicacion_1044/PlataformasAgregadasSinMenores_$M.zip; do
-            echo "== $P"
-            curl -sS --max-time 240 -o z.zip -w "HTTP %{http_code} · %{content_type} · %{size_download} bytes · %{time_total}s\n" -A "RadarBadBen23/1.0" "https://contrataciondelestado.es/$P" || true
-            unzip -l z.zip | tail -3 || true
-          done
+          python - <<'EOF'
+          import sqlite3, os
+          c = sqlite3.connect("data/radar.db")
+          q = lambda s: c.execute(s).fetchall()
+          print("licitaciones:", q("select estado, count(*) from licitaciones group by 1"))
+          print("abiertas A/B:", q("select prioridad, count(*) from licitaciones where estado='PUB' group by 1"))
+          print("adjudicaciones por tipo:", q("select tipo, count(*), round(avg(baja),1), round(avg(ofertas),1) from adjudicaciones group by 1"))
+          print("con duración:", q("select count(*) from adjudicaciones where duracion_meses is not null"))
+          print("meses:", q("select substr(fecha,1,7), count(*) from adjudicaciones group by 1 order by 1 desc limit 8"))
+          print("top A:", q("select puntuacion, substr(titulo,1,90) from licitaciones where estado='PUB' order by puntuacion desc limit 15"))
+          print("ejemplo:", q("select fecha, substr(titulo,1,60), lote, substr(lote_nombre,1,50), cpv, presupuesto, importe, baja, ofertas, ganador from adjudicaciones where tipo='1' limit 5"))
+          tot = sum(os.path.getsize(os.path.join("site/hist", f)) for f in os.listdir("site/hist"))
+          print("web: data", os.path.getsize("site/data.json.gz") // 1024, "KB · histórico", tot // 1024, "KB")
+          EOF

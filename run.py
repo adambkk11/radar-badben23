@@ -70,13 +70,24 @@ def analizar(con, c: dict, n: int | None = None) -> int:
     return hechos
 
 
-def limpiar(con) -> None:
-    """Quita licitaciones cerradas hace más de 60 días sin interés (las adjudicaciones se conservan)."""
-    lim = (dt.date.today() - dt.timedelta(days=60)).isoformat()
-    con.execute("DELETE FROM licitaciones WHERE estado NOT IN ('PUB','PRE','EV','EV_PRE') AND fecha_fin<? ", (lim,))
+def limpiar(con, c: dict) -> None:
+    """Borra lo viejo: licitaciones cerradas hace más de 60 días (salvo las analizadas con IA, que se guardan
+    para el histórico) y adjudicaciones más antiguas que historico.meses_guardar."""
+    hoy = dt.date.today()
+    lim = (hoy - dt.timedelta(days=60)).isoformat()
+    meses = c.get("historico", {}).get("meses_guardar", 24)
+    lim_hist = (hoy - dt.timedelta(days=31 * meses)).isoformat()
+    con.execute("""DELETE FROM licitaciones WHERE estado NOT IN ('PUB','PRE','EV','EV_PRE') AND fecha_fin<?
+                   AND (id NOT IN (SELECT id FROM analisis WHERE data IS NOT NULL) OR fecha_fin<?)""", (lim, lim_hist))
     con.execute("DELETE FROM analisis WHERE id NOT IN (SELECT id FROM licitaciones)")
+    con.execute("DELETE FROM adjudicaciones WHERE fecha<?", (lim_hist,))
     con.commit()
     con.execute("VACUUM")
+
+
+def historico(con, c: dict, meses: int) -> None:
+    for ym in meses_atras(meses):
+        cargar_mes(con, c, ym)
 
 
 def main(argv: list[str]) -> None:
@@ -87,13 +98,16 @@ def main(argv: list[str]) -> None:
     abrir_db(DB, clave)
     con = conectar(DB)
     web_url = os.environ.get("RADAR_URL", "")
+    if orden == "todo" and not con.execute("SELECT 1 FROM adjudicaciones LIMIT 1").fetchone():
+        # base de datos nueva (o perdida): carga sola los últimos meses para tener histórico y abiertas
+        print("[radar] base de datos vacía: cargo el histórico reciente")
+        historico(con, c, c.get("historico", {}).get("meses_carga_automatica", 3))
     if orden in ("actualizar", "todo"):
         actualizar(con, c)
     if orden in ("analizar", "todo"):
         analizar(con, c, int(argv[2]) if len(argv) > 2 and orden == "analizar" else None)
     if orden == "historico":
-        for ym in meses_atras(int(argv[2]) if len(argv) > 2 else 6):
-            cargar_mes(con, c, ym)
+        historico(con, c, int(argv[2]) if len(argv) > 2 else 6)
     if orden == "cargar":
         print(cargar_fichero(con, argv[2], c, argv[3] if len(argv) > 3 else "fichero"))
     if orden in ("web", "todo", "historico", "cargar"):
@@ -110,8 +124,8 @@ def main(argv: list[str]) -> None:
                 print("[aviso] email:", notify.email(texto, f"Radar BadBen23: {n} licitaciones nuevas"))
         else:
             print("[aviso] nada nuevo que avisar")
-    if orden == "todo":
-        limpiar(con)
+    if orden in ("todo", "historico"):
+        limpiar(con, c)
     con.close()
     cerrar_db(DB, clave)
 

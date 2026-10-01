@@ -12,10 +12,10 @@ on:
         options: [todo, actualizar, analizar, web, avisar, historico]
       meses:
         description: "Solo para 'historico': meses hacia atrás"
-        default: "6"
+        default: "12"
 
 permissions:
-  contents: write
+  contents: read
   pages: write
   id-token: write
 
@@ -40,6 +40,14 @@ jobs:
 
       - run: pip install -r requirements.txt
 
+      # La base de datos (cifrada) se guarda en la caché de Actions, no en el repositorio
+      - name: Recuperar base de datos
+        uses: actions/cache/restore@v4
+        with:
+          path: data/radar.db.enc
+          key: radar-db-${{ github.run_id }}
+          restore-keys: radar-db-
+
       - name: Comprobar contraseña
         env:
           SITE_PASSWORD: ${{ secrets.SITE_PASSWORD }}
@@ -63,7 +71,7 @@ jobs:
         run: |
           ORDEN="${{ github.event.inputs.orden || 'todo' }}"
           if [ "$ORDEN" = "historico" ]; then
-            python run.py historico "${{ github.event.inputs.meses || '6' }}"
+            python run.py historico "${{ github.event.inputs.meses || '12' }}"
           else
             python run.py "$ORDEN"
           fi
@@ -71,12 +79,10 @@ jobs:
           [ -f site/data.enc ] || python run.py web
 
       - name: Guardar base de datos (cifrada)
-        run: |
-          git config user.name "radar-bot"
-          git config user.email "radar-bot@users.noreply.github.com"
-          git add data/radar.db.enc
-          git diff --cached --quiet || git commit -m "datos $(date -u +%F\ %H:%M)"
-          git push || (git pull --rebase -X ours && git push)
+        uses: actions/cache/save@v4
+        with:
+          path: data/radar.db.enc
+          key: radar-db-${{ github.run_id }}
 
       - uses: actions/configure-pages@v5
       - uses: actions/upload-pages-artifact@v3
