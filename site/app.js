@@ -298,9 +298,12 @@
           <dt>Montaje / instalación</dt><dd>${ai.montaje_instalacion ? '<span class="tag warn">Sí</span>' : ai.montaje_instalacion === false ? 'No' : '—'}</dd>
           <dt>Idioma de la oferta</dt><dd>${esc(ai.idioma_oferta || '—')}</dd>
           <dt>Garantía definitiva</dt><dd>${esc(ai.garantia_definitiva || '—')}</dd>
+          ${ai.plazo_garantia ? `<dt>Plazo de garantía</dt><dd>${esc(ai.plazo_garantia)}</dd>` : ''}
+          ${ai.penalizaciones ? `<dt>Penalizaciones</dt><dd>${esc(ai.penalizaciones)}</dd>` : ''}
           <dt>Socio recomendado</dt><dd><strong>${esc(ai.socio_recomendado || D.familias[x.f]?.socio || '—')}</strong></dd>
           ${ai.puntos_fuertes?.length ? `<dt>A favor</dt><dd><ul class="clean">${ai.puntos_fuertes.map((a) => `<li>${esc(a)}</li>`).join('')}</ul></dd>` : ''}
           ${ai.riesgos?.length ? `<dt>Riesgos</dt><dd><ul class="clean">${ai.riesgos.map((a) => `<li>${esc(a)}</li>`).join('')}</ul></dd>` : ''}
+          ${ai.citas?.length ? `<dt>Lo dice el pliego</dt><dd><ul class="clean">${ai.citas.map((a) => `<li><em>«${esc(a)}»</em></li>`).join('')}</ul></dd>` : ''}
         </dl>
         ${ai._pliegos_leidos?.length ? `<p class="muted" style="font-size:.8rem">Pliegos leídos: ${ai._pliegos_leidos.map(esc).join(' · ')}</p>` : ''}
       </div>` : `<div class="box"><p class="muted">Aún sin análisis de IA. Se analizan automáticamente las que mejor encajan en cada actualización.</p></div>`;
