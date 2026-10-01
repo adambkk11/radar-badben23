@@ -53,6 +53,13 @@ def analizar(con, c: dict, n: int | None = None) -> int:
            WHERE l.estado='PUB' AND l.fecha_fin>=? AND l.puntuacion>=? AND (a.id IS NULL OR (a.data IS NULL AND (a.fecha<? OR a.error LIKE '%no longer available%' OR a.error LIKE '%límite de uso%')))
            ORDER BY l.puntuacion DESC, l.fecha_fin ASC LIMIT ?""",
         (hoy, c["ia"]["nota_minima_para_analizar"], reintento, n)).fetchall()
+    # Analizar (o repetir) una licitación concreta: LICITACION = enlace o número del expediente/identificador
+    pedida = os.environ.get("LICITACION", "").strip()
+    if pedida:
+        cola = pedida.rstrip("/").rsplit("/", 1)[-1]
+        filas = con.execute("SELECT * FROM licitaciones WHERE id=? OR expediente=? OR (length(?)>=6 AND id LIKE ?) LIMIT 3",
+                            (pedida, pedida, cola, "%/" + cola)).fetchall()
+        print(f"[IA] licitación pedida: {pedida} -> {len(filas)} encontrada(s)")
     hechos = 0
     t0 = time.time()
     max_min = c["ia"].get("minutos_max", 45)
@@ -67,6 +74,8 @@ def analizar(con, c: dict, n: int | None = None) -> int:
             pliegos = obtener_pliegos(it)
             res, modelo = ai.analizar(it, pliegos, c)
             res["_pliegos_leidos"] = [p["nombre"] for p in pliegos]
+            if pedida:  # en una prueba se enseña el análisis completo en el registro
+                print(json.dumps({"modelo": modelo, **res}, ensure_ascii=False, indent=1)[:6000])
             con.execute("INSERT OR REPLACE INTO analisis(id, fecha, modelo, data, error) VALUES(?,?,?,?,NULL)",
                         (f["id"], ahora, modelo, json.dumps(res, ensure_ascii=False)))
             hechos += 1

@@ -139,7 +139,7 @@
     "minutos_max": 45,
     "nota_minima_para_analizar": 45,
     "pausa_segundos": 7,
-    "max_caracteres_pliego": 120000
+    "max_caracteres_pliego": 200000
   },
 
   "alertas": {
