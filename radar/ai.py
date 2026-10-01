@@ -22,20 +22,22 @@ Analiza esta licitación pública de SUMINISTRO y responde SOLO con un JSON vál
     "exige_economica": true/false/null,
     "exige_tecnica": true/false/null,
     "exenta": true/false/null,
-    "admite_empresa_nueva": "sí / no / no se indica (art. 89.1 LCSP: empresas de <5 años en no armonizados)",
+    "admite_empresa_nueva": "una de: 'sí, lo dice el pliego' / 'sí por ley (art. 89.1.h LCSP, el pliego no lo menciona: confirmar con el órgano)' / 'no (contrato armonizado)' / 'no se indica'",
     "detalle": "qué piden exactamente y cifras"
  }},
  "rolece": true/false/null,
  "plazo_entrega": "texto literal resumido",
  "plazo_entrega_dias": número o null,
  "entregas": "unica" | "a_demanda" | "periodica" | "desconocido",
- "duracion_contrato": "texto",
+ "duracion_contrato": "duración inicial + prórrogas, p. ej. '2 años + 2 de prórroga'",
  "muestras": "si piden muestras: cuándo, dónde y de qué; si no, null",
  "epi_categoria_iii": true/false/null,
  "montaje_instalacion": true/false/null,
  "idioma_oferta": "idiomas admitidos",
  "garantia_definitiva": "texto o null",
- "penalizaciones": "resumen o null",
+ "penalizaciones": "resumen (incluye penalidad por no presentar la documentación a tiempo) o null",
+ "plazo_garantia": "plazo de garantía del suministro o null",
+ "citas": ["2-4 frases literales cortas del pliego que respaldan lo más importante (solvencia, criterios, plazos)"],
  "lotes": [{{"lote": "id", "descripcion": "texto", "importe": número o null, "encaja": "sí/no/parcial"}}],
  "socio_recomendado": "uno de: {socios} / ninguno",
  "puntos_fuertes": ["..."],
@@ -44,7 +46,7 @@ Analiza esta licitación pública de SUMINISTRO y responde SOLO con un JSON vál
  "recomendacion": "presentarse" | "estudiar" | "descartar",
  "motivo": "una frase"
 }}
-Sé literal con cifras y plazos; si un dato no aparece, pon null. No inventes.
+Sé literal con cifras y plazos; si un dato no aparece, pon null. No inventes: distingue lo que dice el pliego de lo que deduces por ley.
 
 DATOS DE LA LICITACIÓN:
 {meta}
@@ -225,8 +227,9 @@ def _normalizar(r: dict) -> dict:
     for k in ("que_se_compra", "puntos_fuertes", "riesgos"):
         out[k] = [texto(x) if not isinstance(x, str) else x for x in lista(r.get(k))]
     out["lotes"] = [x for x in lista(r.get("lotes")) if isinstance(x, dict)]
+    out["citas"] = [x for x in lista(r.get("citas")) if isinstance(x, str)][:4]
     for k in ("resumen", "otros_criterios", "plazo_entrega", "duracion_contrato", "muestras", "idioma_oferta",
-              "garantia_definitiva", "penalizaciones", "socio_recomendado", "motivo", "entregas"):
+              "garantia_definitiva", "penalizaciones", "plazo_garantia", "socio_recomendado", "motivo", "entregas"):
         out[k] = texto(r.get(k))
     for k in ("peso_precio", "plazo_entrega_dias", "encaje"):
         out[k] = numero(r.get(k))
@@ -239,6 +242,37 @@ def _normalizar(r: dict) -> dict:
     return out
 
 
+def _limpiar(t: str) -> str:
+    """Quita cabeceras y pies de página repetidos (sello, dirección, 'Página X de Y'): ahorra espacio para lo útil."""
+    lineas = [l.strip() for l in t.splitlines()]
+    norm = lambda l: re.sub(r"(?i)p[áa]g(ina)?\.?\s*\d+(\s*(de|/)\s*\d+)?", "", l)
+    cuenta: dict[str, int] = {}
+    for l in lineas:
+        if len(l) > 15:
+            cuenta[norm(l)] = cuenta.get(norm(l), 0) + 1
+    fuera = {k for k, n in cuenta.items() if n >= 5}
+    return re.sub(r"\n{3,}", "\n\n", "\n".join(l for l in lineas if norm(l) not in fuera))
+
+
+def _repartir(largos: list[int], total: int) -> list[int]:
+    """Reparte 'total' caracteres entre documentos: los cortos entran enteros y el resto se reparte a partes iguales."""
+    cupos = [0] * len(largos)
+    pendientes = [i for i in range(len(largos))]
+    resto = total
+    while pendientes and resto > 0:
+        parte = resto // len(pendientes)
+        cortos = [i for i in pendientes if largos[i] <= parte]
+        if not cortos:
+            for i in pendientes:
+                cupos[i] = parte
+            break
+        for i in cortos:
+            cupos[i] = largos[i]
+            resto -= largos[i]
+            pendientes.remove(i)
+    return cupos
+
+
 def disponible() -> bool:
     return bool(os.environ.get("GEMINI_API_KEY") or os.environ.get("GROQ_API_KEY"))
 
@@ -247,14 +281,18 @@ def analizar(it: dict, pliegos: list[dict], cfg: dict) -> tuple[dict, str]:
     """Devuelve (análisis, modelo usado)."""
     ia = cfg["ia"]
     maxc = ia["max_caracteres_pliego"]
-    texto = ""
     pdf_escaneados = []
+    textos = []
     for d in pliegos:
-        t = (d.get("texto") or "").strip()
+        t = _limpiar((d.get("texto") or "").strip())
         if len(t) < 500 and d.get("pdf"):
             pdf_escaneados.append(d["pdf"])  # PDF escaneado: se lo pasamos a Gemini tal cual
-        texto += f"\n\n===== {d['tipo']}: {d['nombre']} =====\n{t}"
-    texto = texto[:maxc] if texto else "(sin pliegos accesibles: analiza solo con los datos)"
+        textos.append((d, t))
+    # Reparto del espacio entre documentos: antes un PCAP largo dejaba fuera el PPT y los anexos
+    cupos = _repartir([len(t) for _, t in textos], maxc)
+    texto = "".join(f"\n\n===== {d['tipo']}: {d['nombre']} =====\n{t[:c]}" + ("\n[…recortado]" if len(t) > c else "")
+                    for (d, t), c in zip(textos, cupos))
+    texto = texto or "(sin pliegos accesibles: analiza solo con los datos)"
     socios = " / ".join(dict.fromkeys(f["socio"] for f in cfg["familias"].values() if f.get("socio")))
     prompt = PROMPT.format(empresa=cfg["empresa"]["nombre"], modelo=cfg["empresa"]["modelo"],
                            socios=socios, meta=_meta(it), texto=texto)
