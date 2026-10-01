@@ -13,6 +13,9 @@ on:
       meses:
         description: "Solo para 'historico': meses hacia atrás"
         default: "12"
+      licitacion:
+        description: "Solo para 'analizar': enlace o expediente de UNA licitación (vacío = las mejores pendientes)"
+        default: ""
 
 permissions:
   contents: read
@@ -71,6 +74,7 @@ jobs:
           SMTP_USER: ${{ secrets.SMTP_USER }}
           SMTP_PASSWORD: ${{ secrets.SMTP_PASSWORD }}
           ALERT_EMAIL: ${{ secrets.ALERT_EMAIL }}
+          LICITACION: ${{ github.event.inputs.licitacion }}
           RADAR_URL: https://${{ github.repository_owner }}.github.io/${{ github.event.repository.name }}/
         run: |
           ORDEN="${{ github.event.inputs.orden || 'todo' }}"
