@@ -136,6 +136,7 @@
     "modelo_groq": ["llama-3.3-70b-versatile", "openai/gpt-oss-120b", "llama-3.1-8b-instant"],
     "max_caracteres_groq": 22000,
     "max_analisis_por_ejecucion": 25,
+    "minutos_max": 45,
     "nota_minima_para_analizar": 45,
     "pausa_segundos": 7,
     "max_caracteres_pliego": 120000

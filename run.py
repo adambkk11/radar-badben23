@@ -29,6 +29,8 @@ from radar.export import construir  # noqa: E402
 from radar.fetch import actualizar, cargar_fichero  # noqa: E402
 from radar.privado import abrir_db, cargar_config, cerrar_db  # noqa: E402
 
+INICIO = time.time()  # para no pasarnos del tiempo máximo de GitHub (330 min) y publicar siempre la web
+
 DB = RAIZ / "data" / "radar.db"
 SITE = RAIZ / "site"
 
@@ -51,7 +53,12 @@ def analizar(con, c: dict, n: int | None = None) -> int:
            ORDER BY l.puntuacion DESC, l.fecha_fin ASC LIMIT ?""",
         (hoy, c["ia"]["nota_minima_para_analizar"], reintento, n)).fetchall()
     hechos = 0
+    t0 = time.time()
+    max_min = c["ia"].get("minutos_max", 45)
     for f in filas:
+        if (time.time() - t0) / 60 > max_min or (time.time() - INICIO) / 60 > 280:
+            print(f"[IA] tiempo máximo alcanzado: sigo en la próxima ejecución")
+            break
         it = json.loads(f["data"])
         print(f"[IA] {f['puntuacion']} {it['titulo'][:80]}")
         ahora = dt.datetime.now(dt.timezone.utc).isoformat(timespec="seconds")
