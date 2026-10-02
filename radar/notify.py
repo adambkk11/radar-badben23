@@ -60,10 +60,41 @@ def renovaciones(con, cfg: dict, dias: int = 90, web: str = "") -> tuple[str, in
     return "\n".join(lineas), len(filas)
 
 
-def telegram(texto: str) -> bool:
-    tok, chat = os.environ.get("TELEGRAM_TOKEN"), os.environ.get("TELEGRAM_CHAT_ID")
-    if not (tok and chat and texto):
-        return False
+def chat_telegram(con=None) -> str:
+    """ID del chat: el secreto TELEGRAM_CHAT_ID o, si no existe, el del último que escribió al bot (se guarda)."""
+    chat = os.environ.get("TELEGRAM_CHAT_ID", "").strip()
+    if chat:
+        return chat
+    if con is not None:
+        from radar.db import get_estado
+        chat = get_estado(con, "telegram_chat")
+        if chat:
+            return chat
+    tok = os.environ.get("TELEGRAM_TOKEN", "").strip()
+    if not tok:
+        return ""
+    try:
+        r = requests.get(f"https://api.telegram.org/bot{tok}/getUpdates", timeout=30).json()
+    except Exception as e:  # noqa: BLE001
+        print(f"[aviso] Telegram getUpdates falló: {e}")
+        return ""
+    for u in reversed(r.get("result", [])):
+        m = u.get("message") or u.get("edited_message") or {}
+        if (m.get("chat") or {}).get("type") == "private":
+            chat = str(m["chat"]["id"])
+            break
+    if not chat:
+        print("[aviso] Telegram: no encuentro tu chat. Escribe «hola» a tu bot en Telegram y vuelve a ejecutar.")
+        return ""
+    if con is not None:
+        from radar.db import set_estado
+        set_estado(con, "telegram_chat", chat)
+        con.commit()
+    _enviar(tok, chat, "✅ Radar BadBen23 conectado. Aquí te llegarán las licitaciones nuevas que encajan.")
+    return chat
+
+
+def _enviar(tok: str, chat: str, texto: str) -> bool:
     ok = True
     for i in range(0, len(texto), 3800):
         r = requests.post(f"https://api.telegram.org/bot{tok}/sendMessage",
@@ -72,6 +103,14 @@ def telegram(texto: str) -> bool:
             print(f"[aviso] Telegram respondió {r.status_code}: {r.text[:200]}")
             ok = False
     return ok
+
+
+def telegram(texto: str, con=None) -> bool:
+    tok = os.environ.get("TELEGRAM_TOKEN", "").strip()
+    if not (tok and texto):
+        return False
+    chat = chat_telegram(con)
+    return bool(chat) and _enviar(tok, chat, texto)
 
 
 def email(texto: str, asunto: str) -> bool:
