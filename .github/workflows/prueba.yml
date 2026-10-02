@@ -3,12 +3,14 @@ name: Prueba completa
 # Ejecuta el radar con datos reales SIN publicar nada (contraseña de prueba) y prueba la web en un navegador.
 on:
   workflow_dispatch:
+  schedule:
+    - cron: "41 4 * * 1"   # cada lunes a las 6:41 (hora de España): si algo deja de funcionar, GitHub te avisa por correo
 
 env:
   PYTHONUNBUFFERED: "1"
   SITE_PASSWORD: prueba-ci
   # Prueba corta: pocas páginas del feed y sin descargar meses del histórico
-  CONFIG_PRIVADA: '{"feeds": {"max_paginas_por_feed": 4, "dias_atras_primera_vez": 2}, "historico": {"meses_por_ejecucion": 0}}'
+  CONFIG_PRIVADA: '{"feeds": {"max_paginas_por_feed": 4, "dias_atras_primera_vez": 2, "max_paginas_menores": 1}, "historico": {"meses_por_ejecucion": 0}, "ia": {"max_analisis_por_ejecucion": 3, "reanalizar_por_ejecucion": 0}}'
 
 jobs:
   prueba:
