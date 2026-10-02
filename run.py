@@ -60,7 +60,7 @@ def analizar(con, c: dict, n: int | None = None) -> int:
         repaso = con.execute(
             """SELECT l.* FROM licitaciones l JOIN analisis a ON a.id=l.id
                WHERE l.estado='PUB' AND l.fecha_fin>=? AND l.prioridad='A' AND a.data IS NOT NULL
-                 AND json_extract(a.data, '$._v') IS NULL
+                 AND IFNULL(json_extract(a.data, '$._v'), 0) < 3
                ORDER BY l.puntuacion DESC, l.fecha_fin ASC LIMIT ?""", (hoy, hueco)).fetchall()
         filas = list(filas)[:n - len(repaso)] + repaso
     # Analizar (o repetir) una licitación concreta: LICITACION = enlace o número del expediente/identificador
