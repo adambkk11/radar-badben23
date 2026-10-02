@@ -9,7 +9,7 @@ on:
         description: "Qué hacer"
         type: choice
         default: todo
-        options: [todo, actualizar, analizar, web, avisar, historico]
+        options: [todo, actualizar, analizar, web, avisar, prueba_aviso, historico]
       meses:
         description: "Solo para 'historico': meses hacia atrás"
         default: "12"
