@@ -84,7 +84,14 @@ def chat_telegram(con=None) -> str:
             chat = str(m["chat"]["id"])
             break
     if not chat:
-        print("[aviso] Telegram: no encuentro tu chat. Escribe «hola» a tu bot en Telegram y vuelve a ejecutar.")
+        try:
+            yo = requests.get(f"https://api.telegram.org/bot{tok}/getMe", timeout=30).json()
+        except Exception:  # noqa: BLE001
+            yo = {}
+        nombre = (yo.get("result") or {}).get("username") or f"token no válido ({yo.get('description', '?')})"
+        print(f"[aviso] Telegram: bot @{nombre}; getUpdates ok={r.get('ok')} mensajes={len(r.get('result', []))} "
+              f"{r.get('description', '')}")
+        print("[aviso] Telegram: no encuentro tu chat. Escribe «hola» a ESE bot en Telegram y vuelve a ejecutar.")
         return ""
     if con is not None:
         from radar.db import set_estado
