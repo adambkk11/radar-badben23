@@ -259,3 +259,7 @@ table.arts .pu { width: 90px; padding: 6px 8px; border-radius: 8px; border: 1px 
 .btn[disabled] { opacity: .5; pointer-events: none; }
 @media (max-width: 600px) { table.arts .pu { width: 70px; } }
 .nw { white-space: nowrap; overflow-wrap: normal; }
+.aviso { color: var(--b, #b45309); }
+table.arts .pu.editado { border-color: var(--accent, #2563eb); }
+table.arts tr.tot td { border-top: 2px solid var(--line); }
+table.arts th .small { font-weight: 400; }

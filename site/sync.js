@@ -165,12 +165,14 @@
     const on = !!token();
     el.innerHTML = `<div class="box-h"><h3>Sincronizar móvil y ordenador</h3><span id="syncEstado"></span></div>
       ${on ? `<div class="actions"><button class="btn small" id="syncYa">Sincronizar ahora</button><button class="btn small ghost" id="syncOff">Desactivar en este dispositivo</button></div>`
-        : `<details><summary>Cómo activarla (5 minutos, una vez por dispositivo)</summary><ol class="small">
-          <li>En GitHub: tu foto → <b>Settings</b> → <b>Developer settings</b> → <b>Personal access tokens</b> → <b>Fine-grained tokens</b> → <b>Generate new token</b>.</li>
-          <li>Nombre: «radar tablero». Caducidad: la que quieras (por ejemplo 1 año). <b>Repository access</b>: <i>Only select repositories</i> → <b>${repo() || 'tu repositorio del radar'}</b>.</li>
-          <li><b>Permissions</b> → <b>Repository permissions</b> → <b>Contents</b>: <i>Read and write</i>. Nada más. Pulsa <b>Generate token</b> y cópialo.</li>
-          <li>Pégalo aquí abajo y pulsa Activar. Repite en cada dispositivo (puedes usar el mismo token).</li></ol>
-          <p class="small muted">El tablero se guarda cifrado con la contraseña de la web: aunque el repositorio es público, nadie puede leerlo. El token se queda solo en este navegador.</p></details>
+        : `<p class="small">Sirve para que lo que marcas en el móvil (seguimiento, precios, checklist…) aparezca también en el ordenador. Se hace <b>una vez</b>:</p>
+          <ol class="small">
+          <li>Pulsa <a class="btn small" target="_blank" rel="noopener" href="https://github.com/settings/personal-access-tokens/new?name=radar-tablero&description=Sincronizar%20tablero%20del%20Radar&target_name=${encodeURIComponent((repo() || '').split('/')[0] || '')}&expires_in=366&contents=write">Crear la llave en GitHub</a> (GitHub puede pedirte un código que te manda por correo).</li>
+          <li>En <b>Repository access</b> elige <i>Only select repositories</i> y marca <b>${repo() ? repo().split('/')[1] : 'el repositorio del radar'}</b>.</li>
+          <li>Comprueba que en <b>Permissions → Contents</b> pone <i>Read and write</i> (si no, cámbialo). Nada más.</li>
+          <li>Abajo del todo: <b>Generate token</b> → copia el código que empieza por <code>github_pat_</code>.</li>
+          <li>Pégalo aquí y pulsa <b>Activar</b>. En el otro dispositivo, pega el <b>mismo</b> código.</li></ol>
+          <p class="small muted">Si el botón no rellena los campos: tu foto → Settings → Developer settings → Personal access tokens → Fine-grained tokens → Generate new token. El tablero se guarda cifrado con la contraseña de la web; el código solo se queda en tu navegador.</p>
           <div class="row-precios"><input id="syncTok" type="password" autocomplete="off" placeholder="github_pat_…" style="flex:1;min-width:200px"><button class="btn small primary" id="syncOn">Activar</button></div>`}`;
     pintarEstado();
     const on1 = document.getElementById('syncOn');

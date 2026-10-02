@@ -1,5 +1,5 @@
 // Cache sencillo: la app funciona sin conexión con los últimos datos descargados.
-const CACHE = 'radar-v5';
+const CACHE = 'radar-v6';
 const SHELL = ['./', 'index.html', 'style.css', 'app.js', 'hist.js', 'trabajo.js', 'pedir.js', 'sync.js', 'icon.svg', 'icon-192.png', 'manifest.json'];
 self.addEventListener('install', e => { e.waitUntil(caches.open(CACHE).then(c => c.addAll(SHELL)).then(() => self.skipWaiting())); });
 self.addEventListener('activate', e => {

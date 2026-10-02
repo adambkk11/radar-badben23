@@ -109,6 +109,52 @@
     return { total, faltan };
   }
 
+  // ---------- lista de precios del pliego vs. precios del proveedor ----------
+  // Precio del pliego: el que sacó la IA o el que tú corrijas. Coste puesto = precio proveedor (en €) + gastos de importación %.
+  function comparativa(x, lote) {
+    const p = precios()[x.id] || {}, cambio = num(p.cambio || '0,92') || 1, gastos = num(p.gastos ?? '') / 100, baja = num(p.baja ?? '') / 100;
+    const filas = filtrados(x, lote).map((a) => {
+      const pl = p.pp?.[a._i] !== undefined && p.pp[a._i] !== '' ? num(p.pp[a._i]) : (a.precio_max_unitario || 0);
+      const prov = num(p.u?.[a._i] ?? '');
+      const coste = prov ? prov * (p.moneda === 'EUR' ? 1 : cambio) * (1 + gastos) : 0;
+      const oferta = pl ? pl * (1 - baja) : 0;
+      const q = a.cantidad || 0;
+      return { a, q, pl, prov, coste, oferta, margen: oferta && coste ? oferta - coste : null, editado: p.pp?.[a._i] !== undefined && p.pp[a._i] !== '' };
+    });
+    const sum = (f) => filas.reduce((t, r) => t + (f(r) || 0), 0);
+    const completas = filas.filter((r) => r.pl && r.coste);
+    const tot = {
+      pliego: sum((r) => r.pl * r.q), oferta: sum((r) => r.oferta * r.q),
+      coste: sum((r) => r.coste * r.q), sinPliego: filas.filter((r) => !r.pl).length, sinProv: filas.filter((r) => !r.prov).length,
+      margenComp: completas.reduce((t, r) => t + (r.oferta - r.coste) * r.q, 0), ofertaComp: completas.reduce((t, r) => t + r.oferta * r.q, 0),
+    };
+    return { filas, tot, baja: baja * 100, gastos: gastos * 100 };
+  }
+  function excelComparativa(x, lote) {
+    const { filas, baja, gastos } = comparativa(x, lote);
+    const p = precios()[x.id] || {}, cambio = num(p.cambio || '0,92') || 1, eurF = p.moneda === 'EUR' ? 1 : cambio;
+    const H = (v) => ({ v, s: 1 }), T = (v) => ({ v, s: 2 }), n0 = (v) => (v ? Math.round(v * 10000) / 10000 : '');
+    const f0 = 9;  // primera fila de artículos
+    const datos = filas.map((r, i) => {
+      const k = i + f0;
+      return [i + 1, r.a.lote ?? '', T(r.a.articulo), r.q || '', r.a.unidad || '', n0(r.pl), r.a.precio_fuente || (r.editado ? 'corregido a mano' : ''), n0(r.prov),
+        { f: `IF(H${k}="","",H${k}*$C$5*(1+$C$6/100))`, s: 2 }, { f: `IF(F${k}="","",F${k}*(1-$C$4/100))`, s: 2 },
+        { f: `IF(OR(I${k}="",J${k}=""),"",J${k}-I${k})`, s: 2 }, { f: `IF(OR(K${k}="",J${k}=0),"",ROUND(100*K${k}/J${k},1))`, s: 2 }, { f: `IF(K${k}="","",K${k}*D${k})`, s: 2 }];
+    });
+    const fin = f0 + filas.length - 1;
+    const tabla = [
+      [{ v: 'COMPARATIVA DE PRECIOS (uso interno)', s: 1 }],
+      ['Licitación', x.t], ['Expediente', `${x.x || ''}${lote ? ' – Lote ' + lote : ''}`],
+      ['Baja sobre precios del pliego (%)', '', baja], ['Cambio: 1 unidad de la moneda del proveedor =', '', eurF, '€'], ['Gastos de importación (% sobre proveedor)', '', gastos],
+      [],
+      [H('#'), H('Lote'), H('Artículo'), H('Cantidad'), H('Ud.'), H('Precio pliego ud (sin IVA)'), H('Fuente'), H(`Precio proveedor ud (${p.moneda === 'EUR' ? 'EUR' : 'USD'})`), H('Coste puesto ud (€)'), H('Tu precio ud (€)'), H('Margen ud (€)'), H('Margen %'), H('Margen total (€)')],
+      ...datos,
+      [],
+      ['', '', H('TOTALES'), '', '', { f: `SUMPRODUCT(D${f0}:D${fin},F${f0}:F${fin})`, s: 1 }, '', '', { f: `SUMPRODUCT(D${f0}:D${fin},I${f0}:I${fin})`, s: 1 }, { f: `SUMPRODUCT(D${f0}:D${fin},J${f0}:J${fin})`, s: 1 }, '', '', { f: `SUM(M${f0}:M${fin})`, s: 1 }],
+    ];
+    descargar(xlsx(tabla, [5, 6, 40, 10, 7, 14, 22, 14, 14, 14, 13, 10, 15]), `Comparativa_precios_${ref(x)}${lote ? '_lote' + lote : ''}.xlsx`);
+  }
+
   // ---------- datos de la empresa (para los borradores) ----------
   const CAMPOS = [['nombre', 'Razón social'], ['nif', 'NIF'], ['domicilio', 'Domicilio'], ['cp', 'Código postal'], ['municipio', 'Municipio'], ['provincia', 'Provincia'],
     ['administrador', 'Representante (nombre)'], ['dni', 'DNI del representante'], ['cargo', 'Cargo'], ['email', 'Correo para notificaciones'], ['telefono', 'Teléfono'], ['firmante', 'Firma de los correos']];
@@ -161,6 +207,8 @@
     }).join('')}</table>`;
     const cuerpo = `<h1>PROPOSICIÓN ECONÓMICA</h1>${cabecera(x, y, lote)}
       <p>enterado del anuncio y de las condiciones y requisitos que se exigen para la adjudicación del contrato, se compromete a ejecutarlo con estricta sujeción a los pliegos de cláusulas administrativas particulares y de prescripciones técnicas, por los siguientes importes:</p>${tabla}
+      ${(() => { const cm = comparativa(x, lote); const con = cm.filas.filter((r) => r.oferta); if (!con.length) return ''; return `<p><b>Precios unitarios ofertados</b> (sin IVA${cm.baja ? `, baja del ${String(cm.baja).replace('.', ',')}% sobre los precios del pliego` : ''}):</p>
+        <table><tr><th>Artículo</th><th>Cantidad</th><th>Precio unitario</th><th>Importe</th></tr>${con.map((r) => `<tr><td>${R.esc(r.a.articulo)}${r.a.lote ? ` (L${R.esc(r.a.lote)})` : ''}</td><td>${r.q || ''} ${R.esc(r.a.unidad || '')}</td><td>${e2(r.oferta)}</td><td>${r.q ? e2(r.oferta * r.q) : ''}</td></tr>`).join('')}</table>`; })()}
       <p class="muted">Comprueba el tipo de IVA aplicable y, si el pliego lo pide, el desglose por precios unitarios.</p>
       ${x.ai?.otros_criterios ? `<p>Otros criterios evaluables que hay que ofertar: <span style="background:#ff0">${R.esc(x.ai.otros_criterios)}</span></p>` : ''}
       <p>En ${hueco(y.municipio, 'lugar')}, a ${new Date().toLocaleDateString('es-ES', { day: 'numeric', month: 'long', year: 'numeric' })}.</p>
@@ -190,14 +238,32 @@
       const fs = filtrados(x, lote);
       const pp = precios()[x.id] || {};
       const c = costeProducto(x, lote);
+      const cmp = comparativa(x, lote);
       el.innerHTML = `<div class="box-h"><h3>Pedir precios a proveedores</h3>${lotes.length > 1 ? `<select id="pLote"><option value="">Todos los lotes</option>${lotes.map((l) => `<option ${String(l) === String(lote) ? 'selected' : ''}>${R.esc(l)}</option>`).join('')}</select>` : ''}</div>
-        ${sinLista ? `<p class="muted">${motivo}</p>` : `<p class="muted">${fs.length} artículos sacados del pliego por la IA. Comprueba cantidades y especificaciones con el PPT antes de enviar.</p>
-        <div class="tabla-scroll"><table class="arts"><tr><th>#</th><th>Artículo</th><th class="num">Cantidad</th><th>Certificados</th><th class="num">Precio unitario</th></tr>
-        ${fs.map((a, i) => `<tr><td class="nw">${i + 1}${a.lote ? `<div class="muted">L${R.esc(a.lote)}</div>` : ''}</td><td><strong>${R.esc(a.articulo)}</strong><div class="muted small">${R.esc(a.articulo_en || '')}${a.especificacion_en ? ' · ' + R.esc(a.especificacion_en) : ''}</div>${a.precio_max_unitario ? `<div class="small">Máx. pliego: ${eur2(a.precio_max_unitario)}/ud</div>` : ''}</td><td class="num">${a.cantidad ?? '—'} ${R.esc(a.unidad || '')}</td><td class="small">${R.esc(a.certificados || '—')}</td><td class="num"><input class="pu" inputmode="decimal" data-pu="${a._i}" value="${R.esc(pp.u?.[a._i] ?? '')}" placeholder="0"></td></tr>`).join('')}</table></div>
-        <div class="row-precios"><label>Moneda de los precios <select id="pMon"><option value="USD" ${pp.moneda !== 'EUR' ? 'selected' : ''}>USD</option><option value="EUR" ${pp.moneda === 'EUR' ? 'selected' : ''}>EUR</option></select></label>
-          <label>1 USD = <input id="pCambio" inputmode="decimal" value="${R.esc(pp.cambio || '0,92')}" style="width:70px"> €</label>
-          <span>Coste del producto: <strong>${R.eur(c.total)}</strong>${c.faltan ? ` <span class="muted">(faltan ${c.faltan} precios)</span>` : ''}</span>
-          <button class="btn small" id="pUsar" ${c.total ? '' : 'disabled'}>Pasar a la calculadora</button></div>`}
+        ${sinLista ? `<p class="muted">${motivo}</p>` : `<p class="muted">${fs.length} artículos sacados del pliego por la IA. Comprueba cantidades, especificaciones y precios con el PPT y el anexo de precios: puedes corregir el precio del pliego a mano.${x.ai?.oferta_por_precios_unitarios ? ' <strong>Este pliego se oferta por precios unitarios.</strong>' : ''}</p>
+        <div class="row-precios">
+          <label>Moneda del proveedor <select id="pMon"><option value="USD" ${pp.moneda !== 'EUR' ? 'selected' : ''}>USD</option><option value="EUR" ${pp.moneda === 'EUR' ? 'selected' : ''}>EUR</option></select></label>
+          <label>1 USD = <input id="pCambio" inputmode="decimal" value="${R.esc(pp.cambio || '0,92')}" style="width:64px"> €</label>
+          <label title="Flete, seguro, arancel, aduana y transporte hasta el organismo, en % sobre el precio del proveedor">Gastos de importación <input id="pGastos" inputmode="decimal" value="${R.esc(pp.gastos ?? '')}" placeholder="0" style="width:56px"> %</label>
+          <label title="Tu precio = precio del pliego menos esta baja">Baja sobre el pliego <input id="pBaja" inputmode="decimal" value="${R.esc(pp.baja ?? '')}" placeholder="0" style="width:56px"> %</label>
+        </div>
+        <div class="tabla-scroll"><table class="arts"><tr><th>#</th><th>Artículo</th><th class="num">Cant.</th><th class="num">Precio pliego<div class="muted small">ud, sin IVA</div></th><th class="num">Precio proveedor<div class="muted small">ud, ${pp.moneda === 'EUR' ? 'EUR' : 'USD'}</div></th><th class="num">Coste puesto<div class="muted small">ud, €</div></th><th class="num">Tu precio<div class="muted small">ud, €</div></th><th class="num">Margen</th></tr>
+        ${cmp.filas.map((r, i) => { const a = r.a, mp = r.margen !== null && r.oferta ? 100 * r.margen / r.oferta : null;
+          return `<tr><td class="nw">${i + 1}${a.lote ? `<div class="muted">L${R.esc(a.lote)}</div>` : ''}</td><td><strong>${R.esc(a.articulo)}</strong><div class="muted small">${R.esc(a.articulo_en || '')}${a.especificacion_en ? ' · ' + R.esc(a.especificacion_en) : ''}</div>${a.certificados ? `<div class="small">${R.esc(a.certificados)}</div>` : ''}</td>
+          <td class="num nw">${a.cantidad ?? '—'} ${R.esc(a.unidad || '')}</td>
+          <td class="num"><input class="pu ${r.editado ? 'editado' : ''}" inputmode="decimal" data-pp="${a._i}" value="${R.esc(pp.pp?.[a._i] ?? (a.precio_max_unitario ? String(a.precio_max_unitario).replace('.', ',') : ''))}" placeholder="—" title="${R.esc(a.precio_fuente || (a.precio_max_unitario ? 'Precio que sacó la IA del pliego' : 'El pliego no da precio para este artículo: puedes ponerlo tú'))}"></td>
+          <td class="num"><input class="pu" inputmode="decimal" data-pu="${a._i}" value="${R.esc(pp.u?.[a._i] ?? '')}" placeholder="0"></td>
+          <td class="num">${r.coste ? eur2(r.coste) : '—'}</td><td class="num">${r.oferta ? eur2(r.oferta) : '—'}</td>
+          <td class="num nw ${r.margen === null ? '' : r.margen < 0 ? 'neg' : mp < 10 ? 'aviso' : 'ok'}">${r.margen === null ? '—' : `${eur2(r.margen)}<div class="small">${Math.round(mp)}%${r.q ? ' · ' + R.eur(r.margen * r.q) : ''}</div>`}</td></tr>`; }).join('')}
+        <tr class="tot"><td></td><td><strong>Total${lote ? ' lote ' + R.esc(lote) : ''}</strong>${x.l?.length ? `<div class="muted small">Presupuesto ${lote ? 'del lote' : 'de la licitación'}: ${R.eur(lote ? x.l.find((l) => String(l.id) === String(lote))?.i : x.i)}</div>` : ''}</td><td></td>
+          <td class="num"><strong>${R.eur(cmp.tot.pliego)}</strong>${cmp.tot.sinPliego ? `<div class="muted small">${cmp.tot.sinPliego} sin precio</div>` : ''}</td><td></td>
+          <td class="num"><strong>${R.eur(cmp.tot.coste)}</strong>${cmp.tot.sinProv ? `<div class="muted small">${cmp.tot.sinProv} sin precio</div>` : ''}</td>
+          <td class="num"><strong>${R.eur(cmp.tot.oferta)}</strong></td>
+          <td class="num ${cmp.tot.margenComp < 0 ? 'neg' : 'ok'}"><strong>${cmp.tot.ofertaComp ? R.eur(cmp.tot.margenComp) : '—'}</strong>${cmp.tot.ofertaComp ? `<div class="small">${Math.round(100 * cmp.tot.margenComp / cmp.tot.ofertaComp)}%</div>` : ''}</td></tr></table></div>
+        ${cmp.filas.some((r) => r.margen !== null && r.margen < 0) ? `<p class="neg small"><strong>${cmp.filas.filter((r) => r.margen !== null && r.margen < 0).length} artículo(s) dan pérdida</strong> con estos precios: busca otro proveedor o baja menos.</p>` : ''}
+        <div class="row-precios"><span>Coste del producto (sin gastos): <strong>${R.eur(c.total)}</strong>${c.faltan ? ` <span class="muted">(faltan ${c.faltan} precios)</span>` : ''}</span>
+          <button class="btn small" id="pUsar" ${c.total ? '' : 'disabled'}>Pasar a la calculadora</button>
+          <button class="btn small" id="pComp">Excel comparativa (interno)</button></div>`}
         <div class="actions">
           <button class="btn primary" id="pXlsx">Excel para proveedores (inglés)</button>
           <button class="btn" id="pMail">Copiar correo en inglés</button>
@@ -213,6 +279,10 @@
         <div id="pEmpForm" hidden></div>`;
       const sel = $('#pLote', el); if (sel) sel.onchange = () => { lote = sel.value; guardarPrecios(x, { lote }); pintar(); };
       el.querySelectorAll('[data-pu]').forEach((i) => i.addEventListener('change', () => { const pr = precios()[x.id] || {}; guardarPrecios(x, { u: { ...(pr.u || {}), [i.dataset.pu]: i.value } }); pintar(); }));
+      el.querySelectorAll('[data-pp]').forEach((i) => i.addEventListener('change', () => { const pr = precios()[x.id] || {}; guardarPrecios(x, { pp: { ...(pr.pp || {}), [i.dataset.pp]: i.value } }); pintar(); }));
+      const gas = $('#pGastos', el); if (gas) gas.onchange = () => { guardarPrecios(x, { gastos: gas.value }); pintar(); };
+      const baj = $('#pBaja', el); if (baj) baj.onchange = () => { guardarPrecios(x, { baja: baj.value }); pintar(); };
+      const comp = $('#pComp', el); if (comp) comp.onclick = () => excelComparativa(x, lote);
       const mon = $('#pMon', el); if (mon) mon.onchange = () => { guardarPrecios(x, { moneda: mon.value }); pintar(); };
       const cam = $('#pCambio', el); if (cam) cam.onchange = () => { guardarPrecios(x, { cambio: cam.value }); pintar(); };
       const usar = $('#pUsar', el); if (usar) usar.onclick = () => { const k = costeProducto(x, lote); window.TRABAJO?.ponerCoste(x, x.l?.length > 1 ? lote : '', k.total); R.toast('Coste pasado a la calculadora'); document.getElementById('dCalc')?.scrollIntoView({ behavior: 'smooth' }); };
@@ -227,5 +297,5 @@
   }
 
   function init(api) { R = api; }
-  window.PEDIR = { init, ficha, xlsx, articulos, costeProducto, datosEmpresa, _hoy: hoyISO };
+  window.PEDIR = { init, ficha, xlsx, articulos, costeProducto, comparativa, datosEmpresa, _hoy: hoyISO };
 })();
