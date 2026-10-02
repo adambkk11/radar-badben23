@@ -14,13 +14,17 @@ def _eur(x):
     return f"{x:,.0f} €".replace(",", ".") if x else "?"
 
 
-def resumen(con, cfg: dict, desde: str | None = None, web: str = "", limite: int = 25, titulo: str = "") -> tuple[str, int]:
+def nuevas(con, cfg: dict, desde: str | None = None, limite: int = 25):
     desde = desde or (dt.datetime.now(dt.timezone.utc) - dt.timedelta(hours=26)).isoformat(timespec="seconds")
     prios = cfg["alertas"].get("solo_prioridad", ["A"])
-    filas = con.execute(
+    return con.execute(
         f"SELECT * FROM licitaciones WHERE estado='PUB' AND primera_vez>=? AND fecha_fin>=? "
         f"AND prioridad IN ({','.join('?' * len(prios))}) ORDER BY puntuacion DESC LIMIT ?",
         (desde, dt.date.today().isoformat(), *prios, limite)).fetchall()
+
+
+def resumen(con, cfg: dict, desde: str | None = None, web: str = "", limite: int = 25, titulo: str = "") -> tuple[str, int]:
+    filas = nuevas(con, cfg, desde, limite)
     if not filas:
         return "", 0
     lineas = [(titulo or f"📋 Radar BadBen23 — {len(filas)} licitaciones nuevas que encajan") + "\n"]
@@ -101,15 +105,66 @@ def chat_telegram(con=None) -> str:
     return chat
 
 
-def _enviar(tok: str, chat: str, texto: str) -> bool:
+def _enviar(tok: str, chat: str, texto: str, html: bool = False) -> bool:
     ok = True
-    for i in range(0, len(texto), 3800):
-        r = requests.post(f"https://api.telegram.org/bot{tok}/sendMessage",
-                          json={"chat_id": chat, "text": texto[i:i + 3800], "disable_web_page_preview": True}, timeout=60)
+    trozos = [texto] if html else [texto[i:i + 3800] for i in range(0, len(texto), 3800)]
+    for t in trozos:
+        cuerpo = {"chat_id": chat, "text": t, "disable_web_page_preview": True}
+        if html:
+            cuerpo["parse_mode"] = "HTML"
+        r = requests.post(f"https://api.telegram.org/bot{tok}/sendMessage", json=cuerpo, timeout=60)
         if not r.ok:
             print(f"[aviso] Telegram respondió {r.status_code}: {r.text[:200]}")
             ok = False
     return ok
+
+
+def _documento(tok: str, chat: str, ruta: str, nombre: str, texto: str = "") -> bool:
+    with open(ruta, "rb") as fh:
+        r = requests.post(f"https://api.telegram.org/bot{tok}/sendDocument", data={"chat_id": chat, "caption": texto},
+                          files={"document": (nombre, fh, "application/pdf")}, timeout=120)
+    if not r.ok:
+        print(f"[aviso] Telegram (PDF) respondió {r.status_code}: {r.text[:200]}")
+    return r.ok
+
+
+def aviso_telegram(con, cfg: dict, filas, titulo: str, web: str = "") -> bool:
+    """Mensaje con formato + PDF con el resumen, los precios del pliego y la competencia."""
+    tok = os.environ.get("TELEGRAM_TOKEN", "").strip()
+    if not (tok and filas):
+        return False
+    chat = chat_telegram(con)
+    if not chat:
+        return False
+    from radar import informe
+    items = informe.datos(con, filas, cfg)
+    try:
+        ok = all([_enviar(tok, chat, m, html=True) for m in informe.telegram(items, titulo, web)])
+    except Exception as ex:  # noqa: BLE001
+        print(f"[aviso] mensaje con formato falló ({ex}); envío texto simple")
+        ok = False
+    if not ok:  # por si Telegram rechaza el HTML: texto simple
+        ok = _enviar(tok, chat, resumen_items(items, titulo, web))
+    try:
+        import tempfile
+        nombre = f"Radar_BadBen23_{dt.date.today().isoformat()}.pdf"
+        ruta = os.path.join(tempfile.gettempdir(), nombre)
+        informe.pdf(items, titulo, ruta, web)
+        _documento(tok, chat, ruta, nombre, f"{len(items)} licitaciones · resumen, precios del pliego y competencia")
+    except Exception as ex:  # noqa: BLE001
+        print(f"[aviso] no se pudo generar o enviar el PDF: {ex}")
+    return ok
+
+
+def resumen_items(items, titulo, web=""):
+    lineas = [titulo, ""]
+    for it in items:
+        d = it["d"]
+        lineas.append(f"• {d.get('titulo', '')[:110]}\n   {d.get('organo', '')[:60]} · {_eur(d.get('importe'))} · "
+                      f"cierra {d.get('fecha_fin', '')}\n   {d.get('enlace', '')}")
+    if web:
+        lineas.append(f"\nAbrir el radar: {web}")
+    return "\n".join(lineas)
 
 
 def telegram(texto: str, con=None) -> bool:
