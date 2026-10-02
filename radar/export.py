@@ -61,6 +61,21 @@ def _historico(con, cfg: dict, destino: Path, cif, analisis: dict) -> list[dict]
     return indice
 
 
+def _resultados(con) -> dict:
+    """Quién ganó las licitaciones A/B (o analizadas) ya cerradas de los últimos 8 meses: la web marca sola
+    «Ganada» / «Perdida» en tu tablero y enseña las cerradas aunque ya no estén abiertas."""
+    desde = (dt.date.today() - dt.timedelta(days=245)).isoformat()
+    out: dict[str, dict] = {}
+    for f in con.execute(
+            """SELECT l.id, l.titulo, l.organo, l.fecha_fin, a.lote, a.ganador, a.ganador_nif, a.importe, a.ofertas, a.fecha
+               FROM licitaciones l JOIN adjudicaciones a ON a.id=l.id
+               WHERE l.fecha_fin>=? AND (l.prioridad IN ('A','B') OR l.id IN (SELECT id FROM analisis WHERE data IS NOT NULL))
+               ORDER BY a.fecha""", (desde,)):
+        r = out.setdefault(f["id"], {"t": f["titulo"], "o": f["organo"], "ff": f["fecha_fin"], "r": []})
+        r["r"].append([f["lote"], f["ganador"], f["ganador_nif"], f["importe"], f["ofertas"], f["fecha"]])
+    return out
+
+
 def construir(con, cfg: dict, destino: str | Path, clave: str | None) -> dict:
     from .db import get_estado, set_estado
     from .privado import Cifrador
@@ -97,12 +112,17 @@ def construir(con, cfg: dict, destino: str | Path, clave: str | None) -> dict:
     lic.sort(key=lambda x: (-x["n"], x["ff"] or "9999"))
 
     fams = {k: {"nombre": v["nombre"], "socio": v.get("socio", "")} for k, v in cfg["familias"].items()}
+    emp = cfg["empresa"]
+    yo = {k: emp.get(k, "") for k in ("nombre", "nif", "domicilio", "cp", "municipio", "provincia", "administrador",
+                                       "cargo", "email", "telefono", "pyme")}
     datos = {
         "generado": dt.datetime.now().isoformat(timespec="minutes"),
         "empresa": cfg["empresa"]["nombre"],
         "familias": fams,
         "licitaciones": lic,
         "competencia": por_familia(con, cfg["familias"]),
+        "yo": yo,
+        "res": _resultados(con),
         "hist": _historico(con, cfg, destino, cif, analisis),
         "totales": {
             "abiertas": len(lic),

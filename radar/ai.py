@@ -39,6 +39,11 @@ Analiza esta licitación pública de SUMINISTRO y responde SOLO con un JSON vál
  "plazo_garantia": "plazo de garantía del suministro o null",
  "citas": ["2-4 frases literales cortas del pliego que respaldan lo más importante (solvencia, criterios, plazos)"],
  "lotes": [{{"lote": "id", "descripcion": "texto", "importe": número o null, "encaja": "sí/no/parcial"}}],
+ "articulos": [{{"lote": "id del lote o null", "articulo": "nombre en español", "articulo_en": "product name in English",
+    "especificacion_en": "technical specs in English for a factory: material, composition/gsm, size/dimensions, colour, logo/printing, packing, EN/ISO standards",
+    "cantidad": número o null, "unidad": "uds / pares / juegos / m…", "precio_max_unitario": número sin IVA o null (solo si el pliego lo fija),
+    "certificados": "CE, EN ISO 20345 S3, Oeko-Tex… o null"}}],
+ "anexos_oferta": "modelos que hay que rellenar según el pliego (p. ej. 'Anexo I declaración responsable, Anexo II oferta económica') o null",
  "socio_recomendado": "uno de: {socios} / ninguno",
  "puntos_fuertes": ["..."],
  "riesgos": ["..."],
@@ -46,7 +51,7 @@ Analiza esta licitación pública de SUMINISTRO y responde SOLO con un JSON vál
  "recomendacion": "presentarse" | "estudiar" | "descartar",
  "motivo": "una frase"
 }}
-Sé literal con cifras y plazos; si un dato no aparece, pon null. No inventes: distingue lo que dice el pliego de lo que deduces por ley.
+En "articulos" pon TODOS los artículos del PPT o del anexo de precios (máximo 80), con su cantidad tal como aparece; si el pliego no detalla artículos, pon los lotes. Sé literal con cifras y plazos; si un dato no aparece, pon null. No inventes: distingue lo que dice el pliego de lo que deduces por ley.
 
 DATOS DE LA LICITACIÓN:
 {meta}
@@ -145,7 +150,7 @@ def _gemini(prompt: str, pdfs: list[bytes], modelo: str, clave: str) -> dict:
         partes.append({"inline_data": {"mime_type": "application/pdf", "data": base64.b64encode(p).decode()}})
     url = f"https://generativelanguage.googleapis.com/v1beta/models/{modelo}:generateContent"
     body = {"contents": [{"parts": partes}],
-            "generationConfig": {"responseMimeType": "application/json", "temperature": 0.2}}
+            "generationConfig": {"responseMimeType": "application/json", "temperature": 0.2, "maxOutputTokens": 32768}}
     ultimo = ""
     for intento in range(3):
         try:
@@ -228,6 +233,18 @@ def _normalizar(r: dict) -> dict:
         out[k] = [texto(x) if not isinstance(x, str) else x for x in lista(r.get(k))]
     out["lotes"] = [x for x in lista(r.get("lotes")) if isinstance(x, dict)]
     out["citas"] = [x for x in lista(r.get("citas")) if isinstance(x, str)][:4]
+    arts = []
+    for a in lista(r.get("articulos")):
+        if not isinstance(a, dict) or not (a.get("articulo") or a.get("articulo_en")):
+            continue
+        arts.append({"lote": texto(a.get("lote")), "articulo": texto(a.get("articulo")) or texto(a.get("articulo_en")),
+                     "articulo_en": texto(a.get("articulo_en")) or texto(a.get("articulo")),
+                     "especificacion_en": texto(a.get("especificacion_en")), "cantidad": numero(a.get("cantidad")),
+                     "unidad": texto(a.get("unidad")), "precio_max_unitario": numero(a.get("precio_max_unitario")),
+                     "certificados": texto(a.get("certificados"))})
+    out["articulos"] = arts[:80]
+    out["anexos_oferta"] = texto(r.get("anexos_oferta"))
+    out["_v"] = 2
     for k in ("resumen", "otros_criterios", "plazo_entrega", "duracion_contrato", "muestras", "idioma_oferta",
               "garantia_definitiva", "penalizaciones", "plazo_garantia", "socio_recomendado", "motivo", "entregas"):
         out[k] = texto(r.get(k))
@@ -285,7 +302,8 @@ def analizar(it: dict, pliegos: list[dict], cfg: dict) -> tuple[dict, str]:
     textos = []
     for d in pliegos:
         t = _limpiar((d.get("texto") or "").strip())
-        if len(t) < 500 and d.get("pdf"):
+        paginas = d.get("paginas") or 1
+        if d.get("pdf") and (len(t) < 500 or len(t) / paginas < 150):
             pdf_escaneados.append(d["pdf"])  # PDF escaneado: se lo pasamos a Gemini tal cual
         textos.append((d, t))
     # Reparto del espacio entre documentos: antes un PCAP largo dejaba fuera el PPT y los anexos
@@ -314,7 +332,7 @@ def analizar(it: dict, pliegos: list[dict], cfg: dict) -> tuple[dict, str]:
         # el plan gratuito de Groq admite pocas palabras por minuto: se recorta el pliego
         corto = PROMPT.format(empresa=cfg["empresa"]["nombre"], modelo=cfg["empresa"]["modelo"],
                               socios=socios, meta=_meta(it), texto=texto[:ia.get("max_caracteres_groq", 22000)])
-        for m in lista(ia["modelo_groq"]):
+        for m in modelos_groq(q, lista(ia["modelo_groq"])):
             if "groq:" + m in _MUERTOS:
                 continue
             vivos += 1
@@ -325,6 +343,28 @@ def analizar(it: dict, pliegos: list[dict], cfg: dict) -> tuple[dict, str]:
     if not vivos or not quedan_modelos(cfg):
         raise SinIA(" | ".join(errores) or "ningún modelo de IA disponible")
     raise RuntimeError(" | ".join(errores) or "sin clave de IA configurada")
+
+
+_CAT_GROQ: list[str] | None = None
+
+
+def modelos_groq(clave: str, preferidos: list[str]) -> list[str]:
+    """Los preferidos que Groq sigue ofreciendo y, si no queda ninguno, los grandes que haya (Groq también retira modelos)."""
+    global _CAT_GROQ
+    if _CAT_GROQ is None:
+        _CAT_GROQ = []
+        try:
+            r = requests.get("https://api.groq.com/openai/v1/models", headers={"Authorization": f"Bearer {clave}"}, timeout=30)
+            if r.ok:
+                _CAT_GROQ = [m["id"] for m in r.json().get("data", []) if m.get("active", True)]
+        except requests.RequestException:
+            pass
+    if not _CAT_GROQ:
+        return preferidos
+    hay = [m for m in preferidos if m in _CAT_GROQ]
+    if not hay:
+        hay = [m for m in _CAT_GROQ if re.search(r"(70b|120b|maverick|scout|qwen|kimi)", m) and not re.search(r"guard|whisper|tts|vision", m)][:3]
+    return hay
 
 
 def quedan_modelos(cfg: dict) -> bool:

@@ -22,6 +22,32 @@ def _get(url: str, timeout: int = 120) -> requests.Response | None:
     return None
 
 
+def paginas_pdf(data: bytes) -> int:
+    try:
+        from pypdf import PdfReader
+        return len(PdfReader(io.BytesIO(data)).pages)
+    except Exception:
+        return 0
+
+
+def texto_office(data: bytes) -> str:
+    """Texto de un .docx (Word) o .xlsx (Excel): son ZIP con XML dentro."""
+    import zipfile
+    try:
+        z = zipfile.ZipFile(io.BytesIO(data))
+    except zipfile.BadZipFile:
+        return ""
+    partes = []
+    nombres = z.namelist()
+    for n in nombres:
+        if n == "word/document.xml" or n.startswith("word/header") or n == "xl/sharedStrings.xml" or re.match(r"xl/worksheets/sheet\d+\.xml", n):
+            xml = z.read(n).decode("utf-8", "ignore")
+            xml = re.sub(r"</w:p>|</row>|</si>", "\n", xml)
+            xml = re.sub(r"</w:tc>|</c>", " | ", xml)
+            partes.append(html.unescape(re.sub(r"<[^>]+>", "", xml)))
+    return re.sub(r"[ \t]+", " ", "\n".join(partes)).strip()
+
+
 def texto_pdf(data: bytes, max_paginas: int = 80) -> str:
     try:
         from pypdf import PdfReader
@@ -60,7 +86,7 @@ def _pscp_docs(enlace: str) -> list[dict]:
     return out
 
 
-def obtener_pliegos(it: dict, max_docs: int = 4) -> list[dict]:
+def obtener_pliegos(it: dict, max_docs: int = 6) -> list[dict]:
     """Devuelve [{tipo, nombre, url, texto, pdf(bytes|None)}] con PCAP y PPT."""
     docs = list(it.get("documentos") or [])
     if not docs and "contractaciopublica.cat" in (it.get("enlace") or ""):
@@ -74,7 +100,9 @@ def obtener_pliegos(it: dict, max_docs: int = 4) -> list[dict]:
             continue
         data = r.content
         if data[:4] == b"%PDF":
-            out.append({**d, "texto": texto_pdf(data), "pdf": data})
+            out.append({**d, "texto": texto_pdf(data), "pdf": data, "paginas": paginas_pdf(data)})
+        elif data[:2] == b"PK":  # Word/Excel (anexos con el modelo de oferta o la lista de artículos)
+            out.append({**d, "texto": texto_office(data)[:60000], "pdf": None})
         else:
             txt = re.sub(r"<[^>]+>", " ", r.text)
             out.append({**d, "texto": re.sub(r"\s+", " ", html.unescape(txt))[:50000], "pdf": None})

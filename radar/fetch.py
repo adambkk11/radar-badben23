@@ -43,7 +43,7 @@ def descargar(url: str, intentos: int = 4, timeout: int = 180) -> bytes:
     raise RuntimeError(f"No se pudo descargar {url}: {ultimo}")
 
 
-def procesar_items(con, items: list[dict], cfg: dict, ahora: str) -> tuple[int, int, int]:
+def procesar_items(con, items: list[dict], cfg: dict, ahora: str, solo_historico: bool = False) -> tuple[int, int, int]:
     """Guarda licitaciones de suministro (abiertas o de nuestros productos) y TODAS las adjudicaciones
     de los tipos de contrato configurados en historico.tipos (para el buscador del histórico)."""
     nuevas = actualizadas = adjud = 0
@@ -51,7 +51,7 @@ def procesar_items(con, items: list[dict], cfg: dict, ahora: str) -> tuple[int, 
     for it in items:
         tipo = it["tipo"]
         para_hist = tipo in tipos_hist and bool(it.get("resultados"))
-        para_radar = not cfg.get("solo_suministros") or tipo == "1"
+        para_radar = (not cfg.get("solo_suministros") or tipo == "1") and not solo_historico
         if not (para_hist or para_radar):
             continue
         p = puntuar(it, cfg)
@@ -71,19 +71,23 @@ def actualizar(con, cfg: dict, max_paginas: int | None = None) -> dict:
     """Recorre cada feed desde lo más nuevo hasta lo último que ya teníamos."""
     ahora = dt.datetime.now(dt.timezone.utc).isoformat(timespec="seconds")
     resumen = {}
-    max_paginas = max_paginas or cfg["feeds"]["max_paginas_por_feed"]
-    for nombre in ("estado", "agregadas"):
-        url = cfg["feeds"][nombre]
+    for nombre in ("estado", "agregadas", "menores"):
+        url = cfg["feeds"].get(nombre)
+        if not url:
+            continue
+        menores = nombre == "menores"  # contratos menores: ya adjudicados, solo para el histórico
+        tope = cfg["feeds"].get("max_paginas_menores", 12) if menores else (max_paginas or cfg["feeds"]["max_paginas_por_feed"])
         clave = f"ultimo_{nombre}"
         ultimo = get_estado(con, clave)
         if not ultimo:
-            limite = dt.datetime.now(dt.timezone.utc) - dt.timedelta(days=cfg["feeds"]["dias_atras_primera_vez"])
+            dias = cfg["feeds"].get("dias_atras_menores", 3) if menores else cfg["feeds"]["dias_atras_primera_vez"]
+            limite = dt.datetime.now(dt.timezone.utc) - dt.timedelta(days=dias)
             ultimo = limite.isoformat()
         mas_nuevo = None
         pag = 0
         tot = [0, 0, 0]
         vistas = set()
-        while url and pag < max_paginas and url not in vistas:
+        while url and pag < tope and url not in vistas:
             vistas.add(url)
             pag += 1
             print(f"[{nombre}] página {pag}: {url.rsplit('/', 1)[-1]}")
@@ -93,7 +97,7 @@ def actualizar(con, cfg: dict, max_paginas: int | None = None) -> dict:
             if items:
                 fechas = sorted(i["actualizado"] for i in items)
                 mas_nuevo = max(mas_nuevo or "", fechas[-1])
-            n, a, j = procesar_items(con, items, cfg, ahora)
+            n, a, j = procesar_items(con, items, cfg, ahora, solo_historico=menores)
             tot = [tot[0] + n, tot[1] + a, tot[2] + j]
             con.commit()
             # Paramos cuando toda la página es anterior a lo ya procesado
