@@ -30,6 +30,13 @@ for (const [nombre, vp] of [['ordenador', { width: 1366, height: 900 }], ['movil
     await p.fill('#dCalc [data-k=coste]', '10000'); await p.waitForTimeout(300);
     return (await p.textContent('#calcOut')).replace(/\s+/g, ' ').slice(0, 160);
   });
+  await paso('pedir precios y borradores', async () => {
+    if (!(await p.$('#dPedir'))) return 'sin ficha';
+    const txt = (await p.textContent('#dPedir')).replace(/\s+/g, ' ').slice(0, 120);
+    const [d] = await Promise.all([p.waitForEvent('download', { timeout: 10000 }), p.click('#pDecl')]);
+    const [x] = await Promise.all([p.waitForEvent('download', { timeout: 10000 }), p.click('#pXlsx')]);
+    return `${txt} · ${d.suggestedFilename()} · ${x.suggestedFilename()}`;
+  });
   await paso('simulador', async () => ((await p.$('#dSim')) ? (await p.textContent('#dSim')).replace(/\s+/g, ' ').slice(0, 160) : 'sin simulador'));
   await p.keyboard.press('Escape');
   await paso('histórico', async () => {
@@ -39,6 +46,7 @@ for (const [nombre, vp] of [['ordenador', { width: 1366, height: 900 }], ['movil
   });
   for (const v of ['empresas', 'organismos', 'renovaciones']) await paso(`histórico · ${v}`, async () => { await p.click(`#hVistas button[data-v=${v}]`); await p.waitForTimeout(800); });
   for (const t of ['tablero', 'calendario', 'competencia']) await paso(`pestaña ${t}`, async () => { await p.click(`#tabs button[data-tab=${t}]`); await p.waitForTimeout(400); });
+  await paso('caja de sincronización', async () => (await p.textContent('#syncBox')).replace(/\s+/g, ' ').slice(0, 80));
   await paso('sin scroll horizontal', async () => { const w = await p.evaluate(() => document.documentElement.scrollWidth); if (w > vp.width + 2) throw new Error(`ancho ${w}`); return w; });
   await p.screenshot({ path: `captura-${nombre}.png`, fullPage: false });
   await ctx.close();
