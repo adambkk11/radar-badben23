@@ -13,7 +13,11 @@
     "estado": "https://contrataciondelestado.es/sindicacion/sindicacion_643/licitacionesPerfilesContratanteCompleto3.atom",
     "agregadas": "https://contrataciondelestado.es/sindicacion/sindicacion_1044/PlataformasAgregadasSinMenores.atom",
     "max_paginas_por_feed": 60,
-    "dias_atras_primera_vez": 21
+    "dias_atras_primera_vez": 21,
+    "_menores": "Contratos menores ya adjudicados (sin concurso): sirven para el histórico (quién vende qué a cada organismo a dedo)",
+    "menores": "https://contrataciondelestado.es/sindicacion/sindicacion_1143/contratosMenoresPerfilesContratantes.atom",
+    "max_paginas_menores": 12,
+    "dias_atras_menores": 3
   },
 
   "solo_suministros": true,
@@ -136,6 +140,7 @@
     "modelo_groq": ["llama-3.3-70b-versatile", "openai/gpt-oss-120b", "llama-3.1-8b-instant"],
     "max_caracteres_groq": 22000,
     "max_analisis_por_ejecucion": 25,
+    "reanalizar_por_ejecucion": 6,
     "minutos_max": 45,
     "nota_minima_para_analizar": 45,
     "pausa_segundos": 7,

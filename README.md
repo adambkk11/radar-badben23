@@ -14,6 +14,12 @@ Radar privado de licitaciones de **suministro** para Grupo BadBen23:
 - **Calculadora de oferta** en cada licitación: costes de proveedor, flete, arancel y entrega + tu margen → precio, baja, beneficio y probabilidad de ganar según el histórico, y qué precio necesitas para ganar.
 - **Checklist para presentar** cada licitación y **Mi trabajo** en Inicio con tus plazos.
 - **Excel** de la lista filtrada, **búsquedas guardadas** en el histórico y botón **Compartir** (WhatsApp/correo).
+- **Pedir precios a proveedores**: la IA saca del pliego la lista de artículos (cantidad, especificación en inglés, certificados). Botones para descargar el **Excel en inglés** para fábricas, copiar o abrir el **correo en inglés**, apuntar los precios que te den (USD o EUR) y **pasarlos a la calculadora** (por lote).
+- **Borradores en Word** de la **declaración responsable** y la **oferta económica**, rellenados con los datos de la empresa y de la licitación (revisar siempre; si el pliego trae su modelo, usar ese).
+- **La nota aprende de ti**: cuando marcas «Me interesa», «Descartada»…, la nota de las parecidas sube o baja (hasta ±15).
+- **Ganada / Perdida automáticas**: cuando se publica la adjudicación de una «Presentada», el tablero la cambia solo y enseña quién ganó y por cuánto.
+- **Sincronización móvil ↔ ordenador** (opcional): el tablero, notas, calculadoras, checklists y precios se guardan cifrados en tu repositorio (rama `datos-usuario`). Se activa en «Mi tablero» con un token de GitHub.
+- **Contratos menores** en el histórico (compras directas sin concurso): quién vende qué a cada organismo.
 - **Aviso por Telegram** (y/o correo) cuando entra una licitación A.
 - Web con contraseña, funciona en móvil (se puede instalar como app) y ordenador.
 
@@ -70,7 +76,7 @@ A partir de ahí se actualiza sola cada 3 horas (7:17 a 23:17).
 - En el móvil: menú del navegador → *Añadir a pantalla de inicio*.
 
 ## Comprobar que todo funciona
-Pestaña **Actions → Prueba completa → Run workflow**: ejecuta el radar con datos reales sin publicar nada, prueba la descarga de pliegos y abre la web en un navegador automático (móvil y ordenador). Si sale en verde, todo funciona.
+Se comprueba sola cada lunes (si falla, GitHub te manda un correo). También a mano: pestaña **Actions → Prueba completa → Run workflow**: ejecuta el radar con datos reales sin publicar nada, prueba la descarga de pliegos y abre la web en un navegador automático (móvil y ordenador). Si sale en verde, todo funciona.
 
 ## Si algo falla
 - La fecha de «Actualizado» sale en **rojo** si los datos tienen más de 12 horas: mira **Actions** en GitHub.

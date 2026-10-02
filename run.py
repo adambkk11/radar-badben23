@@ -53,6 +53,16 @@ def analizar(con, c: dict, n: int | None = None) -> int:
            WHERE l.estado='PUB' AND l.fecha_fin>=? AND l.puntuacion>=? AND (a.id IS NULL OR (a.data IS NULL AND (a.fecha<? OR a.error LIKE '%no longer available%' OR a.error LIKE '%límite de uso%')))
            ORDER BY l.puntuacion DESC, l.fecha_fin ASC LIMIT ?""",
         (hoy, c["ia"]["nota_minima_para_analizar"], reintento, n)).fetchall()
+    # Las A abiertas analizadas con la versión anterior (sin lista de artículos) se repasan poco a poco
+    # (se reservan unos huecos en cada ejecución para que no esperen a que se acaben las nuevas)
+    hueco = min(c["ia"].get("reanalizar_por_ejecucion", 6), n)
+    if hueco > 0:
+        repaso = con.execute(
+            """SELECT l.* FROM licitaciones l JOIN analisis a ON a.id=l.id
+               WHERE l.estado='PUB' AND l.fecha_fin>=? AND l.prioridad='A' AND a.data IS NOT NULL
+                 AND json_extract(a.data, '$._v') IS NULL
+               ORDER BY l.puntuacion DESC, l.fecha_fin ASC LIMIT ?""", (hoy, hueco)).fetchall()
+        filas = list(filas)[:n - len(repaso)] + repaso
     # Analizar (o repetir) una licitación concreta: LICITACION = enlace o número del expediente/identificador
     pedida = os.environ.get("LICITACION", "").strip()
     if pedida:
@@ -94,14 +104,16 @@ def analizar(con, c: dict, n: int | None = None) -> int:
 
 
 def limpiar(con, c: dict) -> None:
-    """Borra lo viejo: licitaciones cerradas hace más de 60 días (salvo las analizadas con IA, que se guardan
-    para el histórico) y adjudicaciones más antiguas que historico.meses_guardar."""
+    """Borra lo viejo: licitaciones cerradas hace más de 60 días (las A/B se guardan 8 meses para saber quién las
+    ganó; las analizadas con IA, todo el histórico) y adjudicaciones más antiguas que historico.meses_guardar."""
     hoy = dt.date.today()
     lim = (hoy - dt.timedelta(days=60)).isoformat()
+    lim_ab = (hoy - dt.timedelta(days=240)).isoformat()
     meses = c.get("historico", {}).get("meses_guardar", 24)
     lim_hist = (hoy - dt.timedelta(days=31 * meses)).isoformat()
     con.execute("""DELETE FROM licitaciones WHERE estado NOT IN ('PUB','PRE','EV','EV_PRE') AND fecha_fin<?
-                   AND (id NOT IN (SELECT id FROM analisis WHERE data IS NOT NULL) OR fecha_fin<?)""", (lim, lim_hist))
+                   AND (prioridad NOT IN ('A','B') OR fecha_fin<?)
+                   AND (id NOT IN (SELECT id FROM analisis WHERE data IS NOT NULL) OR fecha_fin<?)""", (lim, lim_ab, lim_hist))
     con.execute("DELETE FROM analisis WHERE id NOT IN (SELECT id FROM licitaciones)")
     con.execute("DELETE FROM adjudicaciones WHERE fecha<?", (lim_hist,))
     con.commit()
