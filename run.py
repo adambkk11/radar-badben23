@@ -222,11 +222,13 @@ def main(argv: list[str]) -> int:
 
 
 def avisar(con, c: dict, web_url: str) -> None:
+    if c["alertas"].get("telegram"):
+        notify.chat_telegram(con)  # la primera vez detecta tu chat y te manda un mensaje de bienvenida
     desde = get_estado(con, "ultimo_aviso") or None
     texto, n = notify.resumen(con, c, desde=desde, web=web_url)
     if n:
         if c["alertas"].get("telegram"):
-            print("[aviso] telegram:", "enviado" if notify.telegram(texto) else "no enviado (¿falta TELEGRAM_TOKEN / TELEGRAM_CHAT_ID?)")
+            print("[aviso] telegram:", "enviado" if notify.telegram(texto, con) else "no enviado (¿falta TELEGRAM_TOKEN o escribir «hola» al bot?)")
         if c["alertas"].get("email"):
             print("[aviso] email:", notify.email(texto, f"Radar BadBen23: {n} licitaciones nuevas"))
     else:
@@ -237,7 +239,7 @@ def avisar(con, c: dict, web_url: str) -> None:
     if dt.date.today().weekday() == 0 and get_estado(con, "aviso_renovaciones") != semana:
         texto, n = notify.renovaciones(con, c, web=web_url)
         if n and c["alertas"].get("telegram"):
-            print("[aviso] renovaciones telegram:", notify.telegram(texto))
+            print("[aviso] renovaciones telegram:", notify.telegram(texto, con))
         if n and c["alertas"].get("email"):
             print("[aviso] renovaciones email:", notify.email(texto, f"Radar BadBen23: {n} contratos vencen pronto"))
         set_estado(con, "aviso_renovaciones", semana)
