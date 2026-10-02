@@ -41,8 +41,11 @@ Analiza esta licitación pública de SUMINISTRO y responde SOLO con un JSON vál
  "lotes": [{{"lote": "id", "descripcion": "texto", "importe": número o null, "encaja": "sí/no/parcial"}}],
  "articulos": [{{"lote": "id del lote o null", "articulo": "nombre en español", "articulo_en": "product name in English",
     "especificacion_en": "technical specs in English for a factory: material, composition/gsm, size/dimensions, colour, logo/printing, packing, EN/ISO standards",
-    "cantidad": número o null, "unidad": "uds / pares / juegos / m…", "precio_max_unitario": número sin IVA o null (solo si el pliego lo fija),
+    "cantidad": número o null, "unidad": "uds / pares / juegos / m…",
+    "precio_max_unitario": número o null: precio unitario SIN IVA que da el pliego para ese artículo (precio máximo, de licitación o de referencia; búscalo en el cuadro/anexo de precios o en el desglose del presupuesto; si solo viene con IVA, quítale el IVA indicado; si no lo da, null),
+    "precio_fuente": "dónde sale ese precio, p. ej. 'Anexo II cuadro de precios' o null",
     "certificados": "CE, EN ISO 20345 S3, Oeko-Tex… o null"}}],
+ "oferta_por_precios_unitarios": true si la oferta económica se hace por precios unitarios o por % de descuento sobre ellos, false si es un importe total, null si no se sabe,
  "anexos_oferta": "modelos que hay que rellenar según el pliego (p. ej. 'Anexo I declaración responsable, Anexo II oferta económica') o null",
  "socio_recomendado": "uno de: {socios} / ninguno",
  "puntos_fuertes": ["..."],
@@ -240,11 +243,14 @@ def _normalizar(r: dict) -> dict:
         arts.append({"lote": texto(a.get("lote")), "articulo": texto(a.get("articulo")) or texto(a.get("articulo_en")),
                      "articulo_en": texto(a.get("articulo_en")) or texto(a.get("articulo")),
                      "especificacion_en": texto(a.get("especificacion_en")), "cantidad": numero(a.get("cantidad")),
-                     "unidad": texto(a.get("unidad")), "precio_max_unitario": numero(a.get("precio_max_unitario")),
+                     "unidad": texto(a.get("unidad")), "precio_max_unitario": (numero(a.get("precio_max_unitario")) or None),
+                     "precio_fuente": texto(a.get("precio_fuente")),
                      "certificados": texto(a.get("certificados"))})
     out["articulos"] = arts[:80]
     out["anexos_oferta"] = texto(r.get("anexos_oferta"))
-    out["_v"] = 2
+    v = r.get("oferta_por_precios_unitarios")
+    out["oferta_por_precios_unitarios"] = v if isinstance(v, bool) else None
+    out["_v"] = 3
     for k in ("resumen", "otros_criterios", "plazo_entrega", "duracion_contrato", "muestras", "idioma_oferta",
               "garantia_definitiva", "penalizaciones", "plazo_garantia", "socio_recomendado", "motivo", "entregas"):
         out[k] = texto(r.get(k))
