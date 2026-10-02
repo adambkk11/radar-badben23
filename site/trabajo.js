@@ -49,12 +49,36 @@
     };
   }
 
-  // ---------- calculadora de oferta ----------
+  // ---------- calculadora de oferta (por contrato o por lote) ----------
+  const claveCalc = (x, lote) => (lote ? `${x.id}#${lote}` : x.id);
+  const loteSel = (x) => (x.l?.length > 1 ? (R.store.get('calc', {})[`${x.id}#sel`] || '') : '');
+  const presupuesto = (x, lote) => (lote ? (x.l.find((l) => String(l.id) === String(lote))?.i || 0) : (x.i || x.ve || 0));
+  function cuentas(v) {
+    const coste = num(v.coste) * (1 + num(v.arancel) / 100) + num(v.flete) + num(v.entrega) + num(v.otros);
+    return { coste, oferta: coste * (1 + num(v.margen) / 100) };
+  }
+  // Oferta calculada para el contrato o un lote (la usan los borradores de oferta económica)
+  function oferta(x, lote) {
+    const v = R.store.get('calc', {})[claveCalc(x, lote)];
+    if (!v) return null;
+    const c = cuentas(v);
+    return c.coste ? Math.round(c.oferta * 100) / 100 : null;
+  }
+  function ponerCoste(x, lote, coste) {
+    const todo = R.store.get('calc', {}), k = claveCalc(x, lote);
+    todo[k] = { arancel: '0', margen: '25', flete: '', entrega: '', otros: '', ...(todo[k] || {}), coste: String(Math.round(coste * 100) / 100).replace('.', ',') };
+    if (x.l?.length > 1) todo[`${x.id}#sel`] = lote || '';
+    R.store.set('calc', todo);
+    const el = document.getElementById('dCalc'); if (el) pintarCalc(x, el);
+  }
   async function pintarCalc(x, el) {
-    const pz = x.i || x.ve || 0;
-    const g = R.store.get('calc', {})[x.id] || { coste: '', flete: '', arancel: '0', entrega: '', otros: '', margen: '25' };
+    const lote = loteSel(x);
+    const pz = presupuesto(x, lote);
+    const g = R.store.get('calc', {})[claveCalc(x, lote)] || { coste: '', flete: '', arancel: '0', entrega: '', otros: '', margen: '25' };
+    const selLote = x.l?.length > 1 ? `<label class="lote-sel">Calcular para <select id="calcLote"><option value="">Todo el contrato (${R.eur(x.i || x.ve)})</option>${x.l.map((l) => `<option value="${R.esc(l.id)}" ${String(l.id) === String(lote) ? 'selected' : ''}>Lote ${R.esc(l.id)} · ${R.esc((l.n || '').slice(0, 50))} (${R.eur(l.i)})</option>`).join('')}</select></label>` : '';
     el.innerHTML = `<h3>Calculadora de oferta</h3>
-      <p class="muted">Pon tus costes sin IVA (totales para todo el contrato o el lote que vayas a ofertar). Se guarda en este dispositivo.</p>
+      <p class="muted">Pon tus costes sin IVA (totales para todo el contrato o para el lote elegido). Se guarda y, si activas la sincronización, pasa a tus otros dispositivos.</p>
+      ${selLote}
       <div class="calc">
         <label>Coste del producto (proveedor)<input inputmode="decimal" data-k="coste" value="${R.esc(g.coste)}" placeholder="0"></label>
         <label>Flete y seguro<input inputmode="decimal" data-k="flete" value="${R.esc(g.flete)}" placeholder="0"></label>
@@ -65,13 +89,15 @@
       </div>
       <div id="calcOut" class="calc-out"></div>`;
     const p = window.HIST ? await window.HIST.parecidas(x).catch(() => null) : null;
-    const calcular = () => {
+    const sel = $('#calcLote', el);
+    if (sel) sel.onchange = () => { const todo = R.store.get('calc', {}); todo[`${x.id}#sel`] = sel.value; R.store.set('calc', todo); pintarCalc(x, el); };
+    const calcular = (e) => {
+      if (e && e.target === sel) return;
       const v = {}; el.querySelectorAll('[data-k]').forEach((i) => { v[i.dataset.k] = i.value; });
-      const todo = R.store.get('calc', {}); todo[x.id] = v; R.store.set('calc', todo);
-      const coste = num(v.coste) * (1 + num(v.arancel) / 100) + num(v.flete) + num(v.entrega) + num(v.otros);
+      if (e) { const todo = R.store.get('calc', {}); todo[claveCalc(x, lote)] = v; R.store.set('calc', todo); }
+      const { coste, oferta } = cuentas(v);
       const out = $('#calcOut', el);
       if (!coste) { out.innerHTML = '<p class="muted">Introduce al menos el coste del producto.</p>'; return; }
-      const oferta = coste * (1 + num(v.margen) / 100);
       const baja = pz ? 100 * (1 - oferta / pz) : null;
       const prob = p && baja !== null ? Math.round(100 * window.HIST.probGanar(p.bajas, baja)) : null;
       const filas = p && pz ? [0.3, 0.5, 0.7].map((q) => {
@@ -158,5 +184,5 @@
       b.onclick = exportar; bar.insertBefore(b, document.getElementById('sort'));
     }
   }
-  window.TRABAJO = { init, ficha, inicio, progreso };
+  window.TRABAJO = { init, ficha, inicio, progreso, oferta, ponerCoste, num };
 })();

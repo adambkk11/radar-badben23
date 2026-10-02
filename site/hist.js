@@ -4,7 +4,7 @@
   'use strict';
   let R = null;
   const S = { filas: [], cargados: new Set(), cargando: null, vista: 'buscar' };
-  const H0 = { q: '', cpv: '', meses: 12, tipo: '1', ca: '', org: '', gan: '', imin: '', imax: '', ia: false, orden: 'fecha' };
+  const H0 = { q: '', cpv: '', meses: 12, tipo: '1', ca: '', org: '', gan: '', imin: '', imax: '', ia: false, orden: 'fecha', menor: '' };
   const H = { ...H0 };
   let pagina = 1, abiertoIdx = -1;
 
@@ -120,6 +120,8 @@
       if (imin !== null && imp < imin) return false;
       if (imax !== null && imp > imax) return false;
       if (h.ia && !r.ai) return false;
+      if (h.menor === 'si' && r.pc !== 'Contrato menor') return false;
+      if (h.menor === 'no' && r.pc === 'Contrato menor') return false;
       return true;
     });
   }
@@ -186,6 +188,7 @@
         <input id="hGan" type="search" placeholder="Empresa o NIF ganador" value="${R.esc(H.gan)}">
         <input id="hImin" type="number" placeholder="Presupuesto mín." value="${R.esc(H.imin)}">
         <input id="hImax" type="number" placeholder="máx." value="${R.esc(H.imax)}">
+        <select id="hMenor" title="Contratos menores: adjudicados a dedo, sin concurso"><option value="">Con y sin contratos menores</option><option value="si" ${H.menor === 'si' ? 'selected' : ''}>Solo contratos menores (compras directas)</option><option value="no" ${H.menor === 'no' ? 'selected' : ''}>Sin contratos menores</option></select>
         <label class="check-inline"><input type="checkbox" id="hIa" ${H.ia ? 'checked' : ''}> Con análisis IA</label>
         <button class="btn small ghost" id="hReset">Limpiar</button>
       </div>
@@ -198,7 +201,7 @@
     const leer = () => {
       Object.assign(H, {
         q: $('#hQ').value, cpv: $('#hCpv').value, tipo: $('#hTipo').value, meses: +$('#hMeses').value, ca: $('#hCa').value,
-        org: $('#hOrg').value, gan: $('#hGan').value, imin: $('#hImin').value, imax: $('#hImax').value, ia: $('#hIa').checked,
+        org: $('#hOrg').value, gan: $('#hGan').value, imin: $('#hImin').value, imax: $('#hImax').value, ia: $('#hIa').checked, menor: $('#hMenor').value,
       });
       R.store.set('hist', H); pagina = 1; abiertoIdx = -1;
     };
@@ -211,7 +214,7 @@
   }
 
   // ---------- búsquedas guardadas ----------
-  const CLAVES_B = ['q', 'cpv', 'tipo', 'ca', 'org', 'gan', 'imin', 'imax', 'ia'];
+  const CLAVES_B = ['q', 'cpv', 'tipo', 'ca', 'org', 'gan', 'imin', 'imax', 'ia', 'menor'];
   function pintarGuardadas() {
     const el = $('#hSaved'); if (!el) return;
     const lista = R.store.get('hbusq', []);
@@ -287,7 +290,7 @@
           <div class="meta"><span>${R.fecha(r.f)} ${r.f.slice(0, 4)}</span><span>${R.esc(r.o)}</span><span>${R.esc(r.pr || r.ca)}</span>${r.ai ? `<span class="tag ai">IA: ${R.esc(r.ai.r || 'analizada')}</span>` : ''}</div>
           <div class="meta">Ganó <a href="#" data-emp="${R.esc(r.nif || r.g)}">${R.esc(r.g)}</a></div></div>
         <div class="side"><div class="money">${R.eur(r.im)}</div><div class="muted small">de ${R.eur(r.pz)}</div>
-          <div class="small">${r.b !== null && r.b !== undefined ? `baja <strong>${R.pct(r.b)}</strong>` : ''} ${r.of ? `· ${r.of} of.` : ''}</div></div>
+          <div class="small">${r.b !== null && r.b !== undefined ? `baja <strong>${R.pct(r.b)}</strong>` : ''} ${r.of ? `· ${r.of} of.` : ''}${r.pc === 'Contrato menor' ? ' <span class="tag warn">menor</span>' : ''}</div></div>
       </div>
       ${abierto ? `<div class="hrow-det">
         <dl class="kv">

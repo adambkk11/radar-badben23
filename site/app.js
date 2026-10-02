@@ -11,7 +11,12 @@
   const norm = (s) => String(s || '').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '');
   const store = {
     get(k, d) { try { const v = localStorage.getItem('radar:' + k); return v === null ? d : JSON.parse(v); } catch { return d; } },
-    set(k, v) { try { localStorage.setItem('radar:' + k, JSON.stringify(v)); } catch { /* sin almacenamiento */ } },
+    set(k, v) {
+      const sync = window.SYNC && window.SYNC.claves.includes(k);
+      const viejo = sync ? this.get(k, undefined) : undefined;
+      try { localStorage.setItem('radar:' + k, JSON.stringify(v)); } catch { /* sin almacenamiento */ }
+      if (sync) window.SYNC.cambio(k, viejo, v);
+    },
     del(k) { try { localStorage.removeItem('radar:' + k); } catch { /* */ } },
   };
   const hoy = new Date(); hoy.setHours(0, 0, 0, 0);
@@ -79,7 +84,68 @@
     ['presentada', 'Presentada'], ['ganada', 'Ganada'], ['perdida', 'Perdida'], ['descartada', 'Descartada'],
   ];
   const seg = () => store.get('seguimiento', {});
-  const setSeg = (id, obj) => { const s = seg(); if (obj === null) delete s[id]; else s[id] = { ...(s[id] || {}), ...obj, t: Date.now() }; store.set('seguimiento', s); };
+  const setSeg = (id, obj) => {
+    const s = seg();
+    if (obj === null) delete s[id];
+    else {
+      const x = BY[id];  // copia mínima: así el tablero la sigue mostrando cuando ya no esté abierta
+      const foto = x ? { ti: x.t.slice(0, 200), or: x.o, ff: x.ff, u: x.u, fx: rasgos(x) } : {};
+      s[id] = { ...(s[id] || {}), ...foto, ...obj, t: Date.now() };
+    }
+    store.set('seguimiento', s);
+    if (obj === null || 'estado' in (obj || {})) ajustar();
+  };
+
+  // ---------- la nota aprende de lo que marcas ----------
+  const POSITIVOS = ['interesa', 'precios', 'preparando', 'presentada', 'ganada', 'perdida'];
+  const PESO = { f: 10, cpv: 8, o: 6, ca: 4, p: 3 };
+  function rasgos(x) {
+    const c4 = (x.cpv?.[0] || '').slice(0, 4);
+    return [x.f && 'f:' + x.f, x.ca && 'ca:' + x.ca, c4 && 'cpv:' + c4, x.o && 'o:' + x.o, x.p === 'Abierto simplificado' ? 'p:simpl' : 'p:otro'].filter(Boolean);
+  }
+  let PREF = { n: 0, c: {} };
+  function ajustar() {
+    const c = {}; let n = 0;
+    for (const [id, o] of Object.entries(seg())) {
+      const pos = POSITIVOS.includes(o.estado), neg = o.estado === 'descartada';
+      if (!pos && !neg) continue;
+      const fx = o.fx || (BY[id] && rasgos(BY[id])); if (!fx) continue;
+      n++;
+      for (const k of fx) { c[k] = c[k] || [0, 0]; c[k][pos ? 0 : 1]++; }
+    }
+    PREF = { n, c };
+    for (const x of L) {
+      let a = 0; const por = [];
+      if (n >= 3) for (const k of rasgos(x)) {
+        const v = c[k]; if (!v) continue;
+        const d = ((v[0] - v[1]) / (v[0] + v[1] + 2)) * PESO[k.split(':')[0]];
+        a += d; if (Math.abs(d) >= 1.5) por.push([k, d]);
+      }
+      x._adj = Math.max(-15, Math.min(15, Math.round(a)));
+      x._n = Math.max(0, Math.min(100, x.n + x._adj));
+      x._por = por.sort((p, q) => Math.abs(q[1]) - Math.abs(p[1]));
+    }
+  }
+  function rasgoTxt(k) {
+    const [t, v] = [k.slice(0, k.indexOf(':')), k.slice(k.indexOf(':') + 1)];
+    return { f: D.familias[v]?.nombre || v, ca: v, cpv: 'CPV ' + v + '…', o: v, p: v === 'simpl' ? 'procedimiento simplificado' : 'otros procedimientos' }[t] || v;
+  }
+
+  // ---------- resultados: «Ganada» / «Perdida» solas cuando se publica la adjudicación ----------
+  function aplicarResultados() {
+    const res = D.res || {}, nif = String(D.yo?.nif || '').toUpperCase().replace(/[^A-Z0-9]/g, '');
+    const avisos = [];
+    for (const [id, o] of Object.entries(seg())) {
+      const r = res[id]; if (!r) continue;
+      const lista = r.r.map(([lote, g, n, im, of]) => ({ lote, g, nif: n, im, of }));
+      const mia = nif && lista.some((z) => String(z.nif || '').toUpperCase().replace(/[^A-Z0-9]/g, '') === nif);
+      const upd = {};
+      if (JSON.stringify(o.res) !== JSON.stringify(lista)) upd.res = lista;
+      if (o.estado === 'presentada') upd.estado = mia ? 'ganada' : 'perdida';
+      if (Object.keys(upd).length) { setSeg(id, upd); if (upd.estado) avisos.push(upd.estado); }
+    }
+    if (avisos.length) toast(`Adjudicaciones publicadas: ${avisos.filter((a) => a === 'ganada').length} ganada(s), ${avisos.filter((a) => a === 'perdida').length} perdida(s)`);
+  }
   const F = Object.assign({ q: '', cpv: '', prio: ['A', 'B'], fam: [], ca: [], imin: '', imax: '', dmax: '', simpl: false, noarm: true, pmin: '', ai: false, rec: '', nuevas: false }, store.get('filtros', {}));
   let orden = store.get('orden', 'nota'), pagina = 1;
   const ultimaVisita = store.get('ultimaVisita', '');
@@ -91,14 +157,25 @@
     $('#updated').textContent = 'Actualizado ' + new Date(datos.generado).toLocaleString('es-ES', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' });
     store.set('ultimaVisita', new Date().toISOString().slice(0, 10));
     $('#q').value = F.q; $('#sort').value = orden;
-    window.RADAR = { D, BY, filtrar, ordenar, abrir, ir, store, esc, eur, pct, fecha, toast, seg, setSeg, ESTADOS, diasTxt, copiar };
+    ajustar();
+    window.RADAR = { D, BY, filtrar, ordenar, abrir, ir, store, esc, eur, pct, fecha, toast, seg, setSeg, ESTADOS, diasTxt, copiar, repintar };
     if (window.TRABAJO) window.TRABAJO.init(window.RADAR);
+    if (window.PEDIR) window.PEDIR.init(window.RADAR);
+    aplicarResultados();
     if (window.HIST) window.HIST.init({ leer, store, esc, eur, pct, norm, fecha, toast, ir, D });
     montarFiltros(); pintarInicio(); pintarLista(); pintarTablero(); pintarCalendario(); pintarCompetencia();
     const horas = (Date.now() - new Date(datos.generado).getTime()) / 3600000;
     if (horas > 12) { $('#updated').classList.add('viejo'); $('#updated').title = 'La actualización automática puede estar fallando: revisa Actions en GitHub'; toast(`Datos de hace ${Math.round(horas)} horas`); }
     const h = location.hash.slice(1);
     if (h.startsWith('l=')) abrir(decodeURIComponent(h.slice(2)));
+    if (window.SYNC) window.SYNC.init({ pwd: () => PWD, repintar, toast });
+  }
+  // Tras sincronizar con otro dispositivo
+  function repintar() {
+    ajustar(); aplicarResultados();
+    pintarInicio(); pintarLista(); pintarTablero(); pintarCalendario();
+    const id = decodeURIComponent((location.hash.match(/^#l=(.+)$/) || [])[1] || '');
+    if (id && !$('#drawer').hidden && BY[id]) { const y = $('#drawer .drawer-panel')?.scrollTop; abrir(id); const p = $('#drawer .drawer-panel'); if (p && y) p.scrollTop = y; }
   }
 
   async function leer(f, h) {
@@ -141,7 +218,7 @@
   }
   function ordenar(v) {
     const k = {
-      nota: (a, b) => b.n - a.n || (a._d ?? 999) - (b._d ?? 999),
+      nota: (a, b) => (b._n ?? b.n) - (a._n ?? a.n) || (a._d ?? 999) - (b._d ?? 999),
       cierre: (a, b) => (a._d ?? 999) - (b._d ?? 999),
       importe: (a, b) => (b.i || b.ve || 0) - (a.i || a.ve || 0),
       nuevas: (a, b) => (b.nv || '').localeCompare(a.nv || '') || b.n - a.n,
@@ -206,7 +283,7 @@
   const diasTxt = (d) => d === null ? '' : d < 0 ? 'cerrada' : d === 0 ? 'cierra hoy' : `cierra en ${d} d`;
   function card(x) {
     return `<div class="card" data-id="${esc(x.id)}">
-      <div class="score ${x.pa}">${x.n}<small>${x.pa}</small></div>
+      <div class="score ${x.pa}" title="${x._adj ? `Nota ${x.n} ${x._adj > 0 ? '+' : ''}${x._adj} por tus preferencias` : ''}">${x._n ?? x.n}<small>${x.pa}${x._adj ? (x._adj > 0 ? '↑' : '↓') : ''}</small></div>
       <div><h3>${esc(x.t)}</h3>
         <div class="meta"><span>${esc(x.o)}</span><span>${esc(x.pr || x.ca || '')}</span><span>${esc(D.familias[x.f]?.nombre || '')}</span></div>
         <div class="tags">${etiquetas(x)}</div></div>
@@ -273,10 +350,6 @@
   }
 
   // ---------- ficha ----------
-  function rfq(x) {
-    const art = x.ai?.que_se_compra?.length ? x.ai.que_se_compra : (x.l?.length ? x.l.map((l) => l.n) : [x.t]);
-    return `Hello,\n\nWe need your best price for the following items (public tender, Spain):\n\n${art.map((a) => '- ' + a).join('\n')}\n\nPlease include: unit price (EXW/FOB), MOQ, production time, certificates (CE / EN standards) and a photo or datasheet.\nDeadline for your quote: ${x.ff ? new Date(new Date(x.ff).getTime() - 3 * 86400000).toISOString().slice(0, 10) : 'as soon as possible'}.\n\nThank you,\nAdam Benktib\nGrupo BadBen23 S.L.`;
-  }
   function abrir(id) {
     const x = BY[id]; if (!x) return;
     history.replaceState(null, '', '#l=' + encodeURIComponent(id));
@@ -316,7 +389,7 @@
       <p>Para ganar con precio como criterio único, piensa en una baja alrededor del <strong>${pct(comp.baja_mediana)}</strong> (mediana del histórico).</p></div>` : '';
     const docs = x.d?.length ? x.d.map((d) => `<a class="btn small" href="${esc(d.url)}" target="_blank" rel="noopener">${esc(d.tipo)} · ${esc((d.nombre || '').slice(0, 40))}</a>`).join('') : '';
     $('#detail').innerHTML = `
-      <div class="d-head"><div class="score ${x.pa}">${x.n}<small>${x.pa}</small></div>
+      <div class="d-head"><div class="score ${x.pa}">${x._n ?? x.n}<small>${x.pa}</small></div>
         <div><h2>${esc(x.t)}</h2><div class="meta"><span>${esc(x.o)}</span><span>${esc([x.mu, x.pr, x.ca].filter(Boolean).join(', '))}</span><span>Exp. ${esc(x.x)}</span></div><div class="tags">${etiquetas(x)}</div></div>
         <button class="btn small close" data-close>✕</button></div>
       <div class="facts">
@@ -330,26 +403,40 @@
       <div class="actions">
         <a class="btn primary" href="${esc(x.u)}" target="_blank" rel="noopener">Abrir en la plataforma oficial</a>
         <select id="dEstado"><option value="">Seguimiento…</option>${ESTADOS.map(([k, v]) => `<option value="${k}" ${s.estado === k ? 'selected' : ''}>${v}</option>`).join('')}</select>
-        <button class="btn" id="dRfq">Copiar petición de precios</button>
         <button class="btn" id="dLink">Copiar enlace</button>
         <button class="btn" data-hgo='${esc(JSON.stringify({ cpv: (x.cpv?.[0] || '').slice(0, 5), q: '', org: '', gan: '', tipo: '1' }))}'>Histórico de este CPV</button>
         <button class="btn" data-org="${esc(x.o)}">Ficha del organismo</button>
       </div>
       ${docs ? `<div class="actions">${docs}</div>` : ''}
       ${aiHtml}
+      <div class="box" id="dPedir"></div>
       <div class="box" id="dCalc"></div>
       <div class="box" id="dSim"></div>
       <div class="box" id="dCheck"></div>
-      <div class="box"><h3>Por qué tiene esta nota</h3><ul class="clean">${(x.m || []).map((m) => `<li>${esc(m)}</li>`).join('')}</ul></div>
+      <div class="box"><h3>Por qué tiene esta nota</h3><ul class="clean">${(x.m || []).map((m) => `<li>${esc(m)}</li>`).join('')}
+        ${x._adj ? `<li><strong>Tus preferencias: ${x._adj > 0 ? '+' : ''}${x._adj}</strong> (${x._por.slice(0, 3).map(([k, d]) => `${d > 0 ? 'te suele interesar' : 'sueles descartar'} ${esc(rasgoTxt(k))}`).join('; ')})</li>` : ''}</ul>
+        ${PREF.n < 3 ? '<p class="muted small">Cuando marques al menos 3 licitaciones (Me interesa, Descartada…), la nota se ajustará a tus gustos.</p>' : ''}</div>
       ${compHtml}${sim}${lotes}${crit}${req}
       <div class="box"><h3>Mis notas</h3><textarea id="dNotas" placeholder="Proveedor, precio conseguido, dudas del pliego…">${esc(s.notas || '')}</textarea></div>`;
     $('#drawer').hidden = false; document.body.style.overflow = 'hidden';
     $('#dEstado').onchange = (e) => { setSeg(id, { estado: e.target.value || undefined }); if (!e.target.value) { const ss = seg(); if (ss[id] && !ss[id].notas) setSeg(id, null); } toast('Guardado en tu tablero'); pintarTablero(); pintarLista(); pintarInicio(); };
     $('#dNotas').oninput = (e) => setSeg(id, { notas: e.target.value });
-    $('#dRfq').onclick = () => copiar(rfq(x), 'Petición de precios copiada');
+    if (window.PEDIR) window.PEDIR.ficha(x, $('#dPedir')); else $('#dPedir').remove();
     $('#dLink').onclick = () => copiar(location.href, 'Enlace copiado');
     if (window.HIST && (D.hist || []).length) window.HIST.simular(x, $('#dSim')); else $('#dSim').remove();
     if (window.TRABAJO) window.TRABAJO.ficha(x); else { $('#dCalc').remove(); $('#dCheck').remove(); }
+  }
+  // Ficha mínima de una licitación que ya no está abierta (con quién la ganó, tus notas y el enlace oficial)
+  function abrirCerrada(id) {
+    const o = seg()[id] || {}, r = D.res?.[id];
+    $('#detail').innerHTML = `<div class="d-head"><div><h2>${esc(o.ti || r?.t || 'Licitación cerrada')}</h2><div class="meta"><span>${esc(o.or || r?.o || '')}</span><span>Cerró el ${fecha(o.ff || r?.ff)}</span></div></div><button class="btn small close" data-close>✕</button></div>
+      <div class="actions">${o.u ? `<a class="btn primary" href="${esc(o.u)}" target="_blank" rel="noopener">Abrir en la plataforma oficial</a>` : ''}
+        <select id="dEstado">${ESTADOS.map(([k, v]) => `<option value="${k}" ${o.estado === k ? 'selected' : ''}>${v}</option>`).join('')}<option value="">Quitar del tablero</option></select></div>
+      ${(o.res || []).length ? `<div class="box"><h3>Adjudicación</h3><table><tr><th>Lote</th><th>Ganó</th><th class="num">Importe</th><th class="num">Ofertas</th></tr>${o.res.map((z) => `<tr><td>${esc(z.lote || '—')}</td><td>${esc(z.g)}<div class="muted">${esc(z.nif || '')}</div></td><td class="num">${eur(z.im)}</td><td class="num">${z.of ?? '—'}</td></tr>`).join('')}</table></div>` : '<div class="box muted">Todavía no se ha publicado la adjudicación (o la licitación quedó desierta).</div>'}
+      <div class="box"><h3>Mis notas</h3><textarea id="dNotas">${esc(o.notas || '')}</textarea></div>`;
+    $('#drawer').hidden = false; document.body.style.overflow = 'hidden';
+    $('#dEstado').onchange = (e) => { if (e.target.value) setSeg(id, { estado: e.target.value }); else setSeg(id, null); pintarTablero(); toast('Guardado'); };
+    $('#dNotas').oninput = (e) => setSeg(id, { notas: e.target.value });
   }
   function cerrar() { if ($('#drawer').hidden) return; $('#drawer').hidden = true; document.body.style.overflow = ''; history.replaceState(null, '', location.pathname); }
   function copiar(t, msg) { (navigator.clipboard?.writeText(t) || Promise.reject()).then(() => toast(msg)).catch(() => { prompt('Copia el texto:', t); }); }
@@ -358,15 +445,18 @@
   function pintarTablero() {
     const s = seg();
     const cols = ESTADOS.map(([k, v]) => {
-      const items = Object.entries(s).filter(([, o]) => o.estado === k).map(([id]) => BY[id] || { id, t: '(ya no está abierta)', o: '', _d: null, pa: 'C', n: '' });
+      const items = Object.entries(s).filter(([, o]) => o.estado === k).map(([id, o]) => BY[id] || { id, t: o.ti || D.res?.[id]?.t || '(ya no está abierta)', o: o.or || D.res?.[id]?.o || '', _d: o.ff ? Math.min(-1, dias(o.ff)) : null, cerrada: true });
       return `<div class="col" data-col="${k}"><h3>${v}<span class="muted">${items.length}</span></h3>
-        ${items.map((x) => `<div class="kcard" draggable="true" data-id="${esc(x.id)}"><strong>${esc((x.t || '').slice(0, 90))}</strong><div class="meta"><span>${esc(x.o || '')}</span><span class="${x._d !== null && x._d <= 5 ? 'days hot' : ''}">${diasTxt(x._d)}</span></div></div>`).join('')}</div>`;
+        ${items.map((x) => { const r = s[x.id]?.res; return `<div class="kcard" draggable="true" ${x.cerrada ? `data-cerrada="${esc(x.id)}"` : `data-id="${esc(x.id)}"`}><strong>${esc((x.t || '').slice(0, 90))}</strong><div class="meta"><span>${esc(x.o || '')}</span><span class="${x._d !== null && x._d >= 0 && x._d <= 5 ? 'days hot' : ''}">${diasTxt(x._d)}</span></div>${r?.length ? `<div class="small">Adjudicada a <strong>${esc(r[0].g)}</strong>${r[0].im ? ' por ' + eur(r[0].im) : ''}${r.length > 1 ? ` (+${r.length - 1} lotes)` : ''}</div>` : ''}</div>`; }).join('')}</div>`;
     }).join('');
     $('#tab-tablero').innerHTML = `
       <div class="box-h"><h2>Mi tablero</h2><div class="actions" style="margin:0"><button class="btn small" id="kExp">Exportar</button><label class="btn small">Importar<input type="file" id="kImp" accept="application/json" hidden></label></div></div>
-      <p class="muted">Arrastra las tarjetas entre columnas (en el móvil, cambia el estado desde la ficha). Se guarda en este dispositivo (con tus notas, calculadoras y checklists); usa Exportar/Importar para pasarlo a otro.</p>
+      <p class="muted">Arrastra las tarjetas entre columnas (en el móvil, cambia el estado desde la ficha). Cuando se publica la adjudicación de una «Presentada», pasa sola a Ganada o Perdida.</p>
+      <div class="box" id="syncBox"></div>
       <div class="kanban">${cols}</div>`;
-    $$('.kcard').forEach((c) => c.addEventListener('dragstart', (e) => e.dataTransfer.setData('text/plain', c.dataset.id)));
+    if (window.SYNC) window.SYNC.pintar($('#syncBox')); else $('#syncBox').remove();
+    $$('[data-cerrada]').forEach((c) => c.addEventListener('click', () => abrirCerrada(c.dataset.cerrada)));
+    $$('.kcard').forEach((c) => c.addEventListener('dragstart', (e) => e.dataTransfer.setData('text/plain', c.dataset.id || c.dataset.cerrada)));
     $$('.col').forEach((col) => {
       col.addEventListener('dragover', (e) => { e.preventDefault(); col.classList.add('drop'); });
       col.addEventListener('dragleave', () => col.classList.remove('drop'));
