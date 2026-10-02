@@ -14,16 +14,16 @@ def _eur(x):
     return f"{x:,.0f} €".replace(",", ".") if x else "?"
 
 
-def resumen(con, cfg: dict, desde: str | None = None, web: str = "") -> tuple[str, int]:
+def resumen(con, cfg: dict, desde: str | None = None, web: str = "", limite: int = 25, titulo: str = "") -> tuple[str, int]:
     desde = desde or (dt.datetime.now(dt.timezone.utc) - dt.timedelta(hours=26)).isoformat(timespec="seconds")
     prios = cfg["alertas"].get("solo_prioridad", ["A"])
     filas = con.execute(
         f"SELECT * FROM licitaciones WHERE estado='PUB' AND primera_vez>=? AND fecha_fin>=? "
-        f"AND prioridad IN ({','.join('?' * len(prios))}) ORDER BY puntuacion DESC LIMIT 25",
-        (desde, dt.date.today().isoformat(), *prios)).fetchall()
+        f"AND prioridad IN ({','.join('?' * len(prios))}) ORDER BY puntuacion DESC LIMIT ?",
+        (desde, dt.date.today().isoformat(), *prios, limite)).fetchall()
     if not filas:
         return "", 0
-    lineas = [f"📋 Radar BadBen23 — {len(filas)} licitaciones nuevas que encajan\n"]
+    lineas = [(titulo or f"📋 Radar BadBen23 — {len(filas)} licitaciones nuevas que encajan") + "\n"]
     for f in filas:
         d = json.loads(f["data"])
         ai = con.execute("SELECT data FROM analisis WHERE id=?", (f["id"],)).fetchone()
