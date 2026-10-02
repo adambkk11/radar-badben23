@@ -18,7 +18,7 @@ on:
         default: ""
 
 permissions:
-  contents: read
+  contents: write   # solo para el commit vacío de 'mantener activo'
   pages: write
   id-token: write
 
@@ -38,6 +38,8 @@ jobs:
       url: ${{ steps.deploy.outputs.page_url }}
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
 
       - uses: actions/setup-python@v5
         with:
@@ -104,3 +106,18 @@ jobs:
         id: deploy
         if: always() && hashFiles('site/data.enc') != ''
         uses: actions/deploy-pages@v4
+
+      # GitHub apaga los horarios si el repositorio pasa 60 días sin cambios: commit vacío cada 45 días
+      - name: Mantener activo el radar
+        if: always() && github.event_name == 'schedule'
+        continue-on-error: true
+        run: |
+          ultimo=$(git log -1 --format=%ct)
+          if [ $(( $(date +%s) - ultimo )) -gt $(( 45 * 86400 )) ]; then
+            git config user.name "github-actions[bot]"
+            git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+            git commit --allow-empty -m "Mantener activo el radar"
+            git push
+          else
+            echo "Último cambio hace menos de 45 días: no hace falta."
+          fi
