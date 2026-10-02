@@ -211,6 +211,10 @@ def main(argv: list[str]) -> int:
             fase("web", construir, con, c, SITE, clave)
         if orden in ("avisar", "todo"):
             fase("avisos", avisar, con, c, web_url)
+        if orden == "prueba_aviso":
+            texto, n = notify.resumen(con, c, desde="2000-01-01", web=web_url, limite=5,
+                                      titulo="🧪 Prueba del radar: las 5 mejores licitaciones abiertas ahora")
+            print("[aviso] prueba:", n, "licitaciones;", "enviado" if notify.telegram(texto, con) else "NO enviado")
     finally:
         con.close()
         cerrar_db(DB, clave)
