@@ -212,9 +212,9 @@ def main(argv: list[str]) -> int:
         if orden in ("avisar", "todo"):
             fase("avisos", avisar, con, c, web_url)
         if orden == "prueba_aviso":
-            texto, n = notify.resumen(con, c, desde="2000-01-01", web=web_url, limite=5,
-                                      titulo="🧪 Prueba del radar: las 5 mejores licitaciones abiertas ahora")
-            print("[aviso] prueba:", n, "licitaciones;", "enviado" if notify.telegram(texto, con) else "NO enviado")
+            filas = notify.nuevas(con, c, desde="2000-01-01", limite=5)
+            ok = notify.aviso_telegram(con, c, filas, "Prueba del radar: las 5 mejores licitaciones abiertas ahora", web_url)
+            print("[aviso] prueba:", len(filas), "licitaciones;", "enviado" if ok else "NO enviado")
     finally:
         con.close()
         cerrar_db(DB, clave)
@@ -232,7 +232,9 @@ def avisar(con, c: dict, web_url: str) -> None:
     texto, n = notify.resumen(con, c, desde=desde, web=web_url)
     if n:
         if c["alertas"].get("telegram"):
-            print("[aviso] telegram:", "enviado" if notify.telegram(texto, con) else "no enviado (¿falta TELEGRAM_TOKEN o escribir «hola» al bot?)")
+            filas = notify.nuevas(con, c, desde)
+            ok = notify.aviso_telegram(con, c, filas, f"Radar BadBen23 — {n} licitaciones nuevas que encajan", web_url)
+            print("[aviso] telegram:", "enviado" if ok else "no enviado (¿falta TELEGRAM_TOKEN o escribir «hola» al bot?)")
         if c["alertas"].get("email"):
             print("[aviso] email:", notify.email(texto, f"Radar BadBen23: {n} licitaciones nuevas"))
     else:
