@@ -1,0 +1,16 @@
+<!doctype html>
+<html lang="es"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Abriendo la Plataforma…</title>
+<style>body{font-family:system-ui,sans-serif;margin:40px 16px;color:#333}a{color:#1d4ed8}</style></head>
+<body><p>Abriendo la licitación en la Plataforma de Contratación…</p><p id="m"></p>
+<script>
+// Los enlaces de la Plataforma llevan + / = codificados y algunas apps (Telegram, móvil) los rompen.
+// Aquí llegan como #id en base64url y se rehace el enlace oficial bien codificado.
+(function () {
+  var h = location.hash.slice(1);
+  if (!h) { document.getElementById('m').textContent = 'Falta el identificador.'; return; }
+  var id = h.replace(/-/g, '+').replace(/_/g, '/'); while (id.length % 4) id += '=';
+  var url = 'https://contrataciondelestado.es/wps/poc?uri=deeplink:detalle_licitacion&idEvl=' + encodeURIComponent(id);
+  document.getElementById('m').innerHTML = 'Si no se abre sola: <a href="' + url + '">pulsa aquí</a>';
+  location.replace(url);
+})();
+</script></body></html>

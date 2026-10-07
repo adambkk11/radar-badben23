@@ -2,6 +2,13 @@
    "Mi trabajo" en Inicio, compartir una licitación y exportar la lista a Excel. */
 (() => {
   'use strict';
+  // Enlace a la Plataforma que no se rompe al pegarlo en WhatsApp/Telegram (pasa por ir.html)
+  function enlaceSeguro(u) {
+    const m = /idEvl=([^&]+)/.exec(u || '');
+    if (!m) return u || '';
+    const id = decodeURIComponent(m[1]).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+    return new URL('ir.html#' + id, location.href).href;
+  }
   let R = null;
   const $ = (s, el = document) => el.querySelector(s);
   const num = (v) => {
@@ -128,7 +135,7 @@
       `Importe: ${R.eur(x.i || x.ve)} · Cierra: ${x.ff || '—'} ${x.hf || ''} · ${x.p || ''}`,
       ai.recomendacion ? `IA: ${ai.recomendacion} — ${ai.motivo || ''}` : '',
       ai.que_se_compra?.length ? 'Qué se compra: ' + ai.que_se_compra.slice(0, 6).join('; ') : '',
-      `Enlace oficial: ${x.u}`].filter(Boolean).join('\n');
+      `Enlace oficial: ${enlaceSeguro(x.u)}`].filter(Boolean).join('\n');
   }
 
   // ---------- ficha ----------
