@@ -64,6 +64,22 @@
     if (r && r.ok) { iniciar(await gunzip(await r.arrayBuffer())); return; }
     $('#lockMsg').textContent = 'No hay datos todavía. Espera a que termine la primera actualización.';
   }
+  // Si la app se queda abierta (móvil, pestaña), comprueba si hay datos nuevos al volver y cada 15 min
+  let ultimaComprobacion = Date.now();
+  async function comprobarNuevos(forzar) {
+    if (!ENC || !PWD || (!forzar && Date.now() - ultimaComprobacion < 10 * 60000)) return;
+    ultimaComprobacion = Date.now();
+    const r = await fetch('data.enc?t=' + Date.now(), { cache: 'no-store' }).catch(() => null);
+    if (!r || !r.ok) return;
+    const nuevo = await r.json().catch(() => null);
+    if (nuevo && nuevo.iv && nuevo.iv !== ENC.iv) { toast('Hay datos nuevos: actualizando…'); setTimeout(() => location.reload(), 600); }
+    else if (forzar) toast('Ya tienes los últimos datos');
+  }
+  document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') comprobarNuevos(false); });
+  setInterval(() => { if (document.visibilityState === 'visible') comprobarNuevos(false); }, 15 * 60000);
+  $('#updated').onclick = () => comprobarNuevos(true);
+  $('#updated').style.cursor = 'pointer';
+
   $('#lockForm').onsubmit = async (e) => {
     e.preventDefault();
     const pwd = $('#pwd').value;
