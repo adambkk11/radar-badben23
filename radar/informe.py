@@ -3,10 +3,23 @@ from __future__ import annotations
 
 import datetime as dt
 import html
+import re
 import json
 import statistics
 
 NV = "NO VERIFICADO"
+
+
+def enlace(url: str) -> str:
+    """Enlace que no se rompe en Telegram/móvil: los de la Plataforma pasan por ir.html con el id en base64url."""
+    import os
+    m = re.search(r"idEvl=([^&]+)", url or "")
+    web = os.environ.get("RADAR_URL", "").strip()
+    if not (m and web):
+        return url or ""
+    from urllib.parse import unquote
+    idb = unquote(m.group(1)).replace("+", "-").replace("/", "_").rstrip("=")
+    return web.rstrip("/") + "/ir.html#" + idb
 
 
 def _eur(x, dec=0):
@@ -100,7 +113,7 @@ def telegram(items: list[dict], titulo: str, web: str = "") -> list[str]:
         if m.get("baja_med") is not None:
             lineas.append(f"📉 Baja típica en {e(it['familia'].lower() or 'esta familia')}: {_pct(m['baja_med'])}"
                           + (f" · {_num(m['ofertas_med'])} ofertas de media" if m.get("ofertas_med") else ""))
-        lineas.append(f"🔗 <a href=\"{e(d.get('enlace', ''), quote=True)}\">Ver en la Plataforma</a>")
+        lineas.append(f"🔗 <a href=\"{e(enlace(d.get('enlace', '')), quote=True)}\">Ver en la Plataforma</a>")
         bloques.append("\n".join(lineas))
     cab = f"📋 <b>{e(titulo)}</b>\n<i>Resumen completo con precios del pliego en el PDF adjunto.</i>"
     pie = f"\n🔎 <a href=\"{e(web, quote=True)}\">Abrir el radar</a>" if web else ""
@@ -268,8 +281,8 @@ def pdf(items: list[dict], titulo: str, ruta, web: str = "") -> str:
 
         if a.get("riesgos"):
             st += [Paragraph("Riesgos", H3)] + [Paragraph("• " + e(r), P) for r in a["riesgos"][:6]]
-        st.append(Paragraph(f"Enlace oficial: <link href='{e(d.get('enlace', ''))}' color='#1d4ed8'>"
-                            f"{e(d.get('enlace', '')[:110])}</link>", PS))
+        st.append(Paragraph(f"<link href='{e(enlace(d.get('enlace', '')))}' color='#1d4ed8'>Abrir la licitación en la Plataforma</link>"
+                            f" · expediente {e(d.get('expediente') or '')}", PS))
         if i < len(items):
             st.append(PageBreak())
     if web:

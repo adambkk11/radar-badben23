@@ -10,6 +10,11 @@ from email.mime.text import MIMEText
 import requests
 
 
+def _enl(u):
+    from radar.informe import enlace
+    return enlace(u)
+
+
 def _eur(x):
     return f"{x:,.0f} €".replace(",", ".") if x else "?"
 
@@ -38,7 +43,7 @@ def resumen(con, cfg: dict, desde: str | None = None, web: str = "", limite: int
         lineas.append(
             f"• [{f['prioridad']} {f['puntuacion']}] {d['titulo'][:110]}\n"
             f"   {d['organo'][:60]} ({d['provincia'] or d['ccaa']}) · {_eur(d['importe'])} · cierra {d['fecha_fin']} "
-            f"· {d['procedimiento_txt']}{rec}\n   {d['enlace']}")
+            f"· {d['procedimiento_txt']}{rec}\n   {_enl(d['enlace'])}")
     if web:
         lineas.append(f"\nAbrir el radar: {web}")
     return "\n".join(lineas), len(filas)
@@ -58,7 +63,7 @@ def renovaciones(con, cfg: dict, dias: int = 90, web: str = "") -> tuple[str, in
     lineas = [f"🔁 Radar BadBen23 — {len(filas)} contratos de tus productos vencen en los próximos {dias} días\n"]
     for f in filas:
         lineas.append(f"• {(f['lote_nombre'] or f['titulo'])[:100]}\n   {f['organo'][:60]} · {_eur(f['importe'])} · "
-                      f"lo tiene {f['ganador'][:40]} · vence {f['fin']} · {fams.get(f['familia'], {}).get('nombre', '')}\n   {f['enlace']}")
+                      f"lo tiene {f['ganador'][:40]} · vence {f['fin']} · {fams.get(f['familia'], {}).get('nombre', '')}\n   {_enl(f['enlace'])}")
     if web:
         lineas.append(f"\nMás en el radar → Histórico → Próximas renovaciones: {web}")
     return "\n".join(lineas), len(filas)
@@ -161,7 +166,7 @@ def resumen_items(items, titulo, web=""):
     for it in items:
         d = it["d"]
         lineas.append(f"• {d.get('titulo', '')[:110]}\n   {d.get('organo', '')[:60]} · {_eur(d.get('importe'))} · "
-                      f"cierra {d.get('fecha_fin', '')}\n   {d.get('enlace', '')}")
+                      f"cierra {d.get('fecha_fin', '')}\n   {_enl(d.get('enlace', ''))}")
     if web:
         lineas.append(f"\nAbrir el radar: {web}")
     return "\n".join(lineas)
